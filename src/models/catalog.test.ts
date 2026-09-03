@@ -29,13 +29,17 @@ test("orders documented fallback models before other discovered models", () => {
 
 test("formats model IDs for the VS Code picker", () => {
   assert.equal(formatModelName("orvix/auto"), "Orvix Auto");
-  assert.equal(formatModelName("orvix/muse-spark-1.2"), "Orvix Muse Spark 1.2");
+  assert.equal(formatModelName("orvix/muse-spark-1.2"), "Muse Spark 1.2");
+  assert.equal(formatModelName("orvix/mimo-v2.5-pro"), "MiMo-V2.5-Pro");
+  assert.equal(formatModelName("orvix/gpt-5.6-luna"), "GPT-5.6 Luna");
+  assert.equal(formatModelName("orvix/deepseek-v4-pro"), "DeepSeek V4 Pro");
+  assert.equal(formatModelName("orvix/minimax-m3"), "MiniMax M3");
 });
 
 test("provides documented fallback limits", () => {
   assert.deepEqual(getModelMetadata("orvix/muse-spark-1.2"), {
     id: "orvix/muse-spark-1.2",
-    name: "Orvix Muse Spark 1.2",
+    name: "Muse Spark 1.2",
     version: "unknown",
     contextLength: 450_000,
     maxOutputTokens: 80_000,
@@ -75,6 +79,15 @@ test("uses exactly the discovered catalog and advertised metadata", () => {
       },
     ],
   );
+});
+
+test("normalizes managed names instead of trusting provider-prefixed API labels", () => {
+  const models = orderModelMetadata([
+    { id: "orvix/mimo-v2.5", name: "Orvix MIMO V2.5" },
+    { id: "orvix/custom-chat", name: "Orvix Custom Chat" },
+  ]);
+  assert.equal(models.find(({ id }) => id === "orvix/mimo-v2.5")?.name, "MiMo-V2.5");
+  assert.equal(models.find(({ id }) => id === "orvix/custom-chat")?.name, "Custom Chat");
 });
 
 test("uses live capability flags without sending undocumented reasoning controls", () => {

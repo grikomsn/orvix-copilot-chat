@@ -40,6 +40,23 @@ export interface OrvixApiModel {
   readonly owned_by?: unknown;
 }
 
+const MANAGED_MODEL_NAMES = new Map<string, string>([
+  ["orvix/auto", "Orvix Auto"],
+  ["orvix/muse-spark-1.2", "Muse Spark 1.2"],
+  ["orvix/muse-spark-1.3", "Muse Spark 1.3"],
+  ["orvix/mimo-v2.5", "MiMo-V2.5"],
+  ["orvix/mimo-v2.5-pro", "MiMo-V2.5-Pro"],
+  ["orvix/glm-5.3-flash", "GLM 5.3 Flash"],
+  ["orvix/gpt-5.6-luna", "GPT-5.6 Luna"],
+  ["orvix/deepseek-v4-flash", "DeepSeek V4 Flash"],
+  ["orvix/deepseek-v4-pro", "DeepSeek V4 Pro"],
+  ["orvix/gemini-3.7-flash", "Gemini 3.7 Flash"],
+  ["orvix/gemini-3.8-flash", "Gemini 3.8 Flash"],
+  ["orvix/minimax-m3", "MiniMax M3"],
+  ["orvix/qwen-3.8-max", "Qwen 3.8 Max"],
+  ["orvix/kimi-k3", "Kimi K3"],
+]);
+
 // The managed catalogue endpoint currently returns IDs without limits or
 // capabilities. Limits are the enforced Orvix per-request ceilings;
 // capabilities reflect the route-specific matrix on platform.orvix.id/models.
@@ -126,7 +143,10 @@ export function formatTokenLimit(tokens: number): string {
 }
 
 export function formatModelName(id: string): string {
-  return id
+  const canonical = canonicalModelId(id);
+  const managedName = MANAGED_MODEL_NAMES.get(canonical);
+  if (managedName) return managedName;
+  return canonical
     .replaceAll("/", " ")
     .split(/[-\s]+/)
     .map((part) => {
@@ -146,7 +166,11 @@ function modelMetadataFromApi(raw: OrvixApiModel): OrvixModelMetadata | undefine
   const managedMetadata = MANAGED_MODEL_METADATA.get(id);
   return {
     id,
-    name: rawName.trim() ? rawName.replace(/^Orvix:\s*/i, "").trim() : fallback.name,
+    name: managedMetadata
+      ? fallback.name
+      : rawName.trim()
+        ? rawName.replace(/^Orvix(?::|\s)\s*/i, "").trim()
+        : fallback.name,
     version: typeof raw.version === "string" && raw.version ? raw.version : fallback.version,
     contextLength:
       positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len) ?? fallback.contextLength,
