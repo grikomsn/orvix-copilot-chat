@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { resolveMaxOutputTokens } from "../models/catalog";
-import { applyReasoningEffort, type ReasoningEffort } from "../models/options";
+import type { ReasoningEffort } from "../models/options";
+import { applyEffortIfSupported } from "./effort";
 import { convertMessages } from "./messages";
 
 export function buildRequest(
@@ -35,7 +36,7 @@ export function buildRequest(
         }
       : {}),
   };
-  return supportsReasoningEffort && reasoningEffort ? applyReasoningEffort(body, reasoningEffort) : body;
+  return applyEffortIfSupported(body, reasoningEffort, supportsReasoningEffort);
 }
 
 function sanitizeSchema(schema: unknown): Record<string, unknown> {
