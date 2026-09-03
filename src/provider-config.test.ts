@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { modelFamily } from "./models/family";
 
 test("declares native API-key configuration without a management-command override", () => {
   const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
@@ -15,6 +16,12 @@ test("declares native API-key configuration without a management-command overrid
   };
   assert.deepEqual(configuration.required, ["apiKey"]);
   assert.equal(configuration.properties?.apiKey.secret, true);
+});
+
+test("groups managed models by their native family", () => {
+  assert.equal(modelFamily("orvix/muse-spark-1.2"), "muse");
+  assert.equal(modelFamily("orvix/deepseek-v4-pro"), "deepseek");
+  assert.equal(modelFamily("orvix/auto"), "auto");
 });
 
 test("keeps the legacy management commands available for the Secret Storage key", () => {

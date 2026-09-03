@@ -17,6 +17,7 @@ import { ModelsDevMetadata, resolveModelsDevMetadata } from "./models/metadata";
 import { ChatCompletionStreamParser, validateStreamCompletion } from "./transport/sse";
 import { ORVIX_ENDPOINTS, orvixHeaders } from "./transport/protocol";
 import { apiError } from "./transport/errors";
+import { modelFamily } from "./models/family";
 import { apiKeyFromConfiguration, credentialRefForApiKey, qualifiedModelId } from "./provider-profile";
 import { isTransientNetworkError, isTransientServerError, retryDelayMs } from "./provider/retry";
 import { messageToText } from "./provider/messages";
@@ -360,10 +361,6 @@ class MemoryMetadataCache {
     return undefined;
   }
   async update(_key: string, _value: unknown): Promise<void> {}
-}
-
-function modelFamily(modelId: string): string {
-  return modelId.toLowerCase().split(/[-/]/, 1)[0] || "orvixai";
 }
 
 async function waitForRetry(milliseconds: number, signal: AbortSignal | null | undefined): Promise<void> {

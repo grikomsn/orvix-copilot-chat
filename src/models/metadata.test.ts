@@ -47,7 +47,8 @@ test("normalizes provider-qualified models.dev metadata", () => {
     reasoningOptions: ["none", "high"],
     releaseDate: "2026-01-01",
   });
-  assert.equal(resolveModelsDevMetadata(snapshot, "orvix/m")?.description, "Model");
+  assert.equal(resolveModelsDevMetadata(snapshot, "orvix/m"), undefined);
+  assert.equal(resolveModelsDevMetadata(snapshot, "m", "orvix"), undefined);
   assert.equal(resolveModelsDevMetadata(snapshot, "m", "openai")?.description, "Model");
 });
 

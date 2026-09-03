@@ -41,7 +41,7 @@ test("provides documented fallback limits", () => {
     maxOutputTokens: 32_000,
     imageInput: true,
     toolCalling: true,
-    reasoningEffort: false,
+    reasoningEffort: true,
     cost: undefined,
   });
   assert.equal(formatTokenLimit(1_000_000), "1M");
@@ -69,7 +69,7 @@ test("uses exactly the discovered catalog and advertised metadata", () => {
         contextLength: 500_000,
         maxOutputTokens: 64_000,
         imageInput: true,
-        toolCalling: true,
+        toolCalling: false,
         reasoningEffort: false,
         cost: undefined,
       },
@@ -91,8 +91,9 @@ test("uses live capability flags without sending undocumented reasoning controls
   assert.equal(getModelMetadata("orvix/auto").reasoningEffort, false);
 });
 
-test("fills descriptive and capability metadata from models.dev", () => {
-  const enriched = enrichModelMetadata(getModelMetadata("orvix/example"), {
+test("keeps unknown models conservative while allowing native metadata enrichment", () => {
+  assert.equal(getModelMetadata("orvix/example").toolCalling, false);
+  const enriched = enrichModelMetadata(getModelMetadata("example"), {
     id: "example",
     description: "General coding model",
     imageInput: true,
@@ -102,6 +103,29 @@ test("fills descriptive and capability metadata from models.dev", () => {
   assert.equal(enriched.description, "General coding model");
   assert.equal(enriched.imageInput, true);
   assert.equal(enriched.releaseDate, "2025-12-01");
+});
+
+test("uses the official managed capability matrix for discovered models", () => {
+  const models = orderModelMetadata([
+    { id: "orvix/glm-5.3-flash" },
+    { id: "orvix/gemini-3.7-flash" },
+    { id: "orvix/qwen-3.8-max" },
+    { id: "orvix/kimi-k3" },
+  ]);
+  assert.deepEqual(
+    models.map(({ id, imageInput, toolCalling, reasoningEffort }) => ({
+      id,
+      imageInput,
+      toolCalling,
+      reasoningEffort,
+    })),
+    [
+      { id: "orvix/gemini-3.7-flash", imageInput: true, toolCalling: true, reasoningEffort: false },
+      { id: "orvix/glm-5.3-flash", imageInput: false, toolCalling: false, reasoningEffort: false },
+      { id: "orvix/kimi-k3", imageInput: false, toolCalling: true, reasoningEffort: false },
+      { id: "orvix/qwen-3.8-max", imageInput: true, toolCalling: true, reasoningEffort: false },
+    ],
+  );
 });
 
 test("uses only live pricing because Orvix managed rates are not in the model API", () => {
