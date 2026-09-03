@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+### Patch Changes
+
+- 4abaf73: Refactor the reasoning-effort request gating into a vscode-free helper (`src/provider/effort.ts`) so it can be covered by the colocated `node` test runner. No behavior change.
+
 ## 0.2.0
 
 ### Minor Changes
