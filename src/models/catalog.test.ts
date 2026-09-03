@@ -29,16 +29,20 @@ test("orders documented fallback models before other discovered models", () => {
 
 test("formats model IDs for the VS Code picker", () => {
   assert.equal(formatModelName("orvix/auto"), "Orvix Auto");
-  assert.equal(formatModelName("orvix/muse-spark-1.2"), "Orvix Muse Spark 1.2");
+  assert.equal(formatModelName("orvix/muse-spark-1.2"), "Muse Spark 1.2");
+  assert.equal(formatModelName("orvix/mimo-v2.5-pro"), "MiMo-V2.5-Pro");
+  assert.equal(formatModelName("orvix/gpt-5.6-luna"), "GPT-5.6 Luna");
+  assert.equal(formatModelName("orvix/deepseek-v4-pro"), "DeepSeek V4 Pro");
+  assert.equal(formatModelName("orvix/minimax-m3"), "MiniMax M3");
 });
 
 test("provides documented fallback limits", () => {
   assert.deepEqual(getModelMetadata("orvix/muse-spark-1.2"), {
     id: "orvix/muse-spark-1.2",
-    name: "Orvix Muse Spark 1.2",
+    name: "Muse Spark 1.2",
     version: "unknown",
-    contextLength: 1_000_000,
-    maxOutputTokens: 32_000,
+    contextLength: 450_000,
+    maxOutputTokens: 80_000,
     imageInput: true,
     toolCalling: true,
     reasoningEffort: true,
@@ -46,6 +50,9 @@ test("provides documented fallback limits", () => {
   });
   assert.equal(formatTokenLimit(1_000_000), "1M");
   assert.equal(formatTokenLimit(262_144), "256K");
+  assert.equal(getModelMetadata("orvix/auto").maxOutputTokens, 16_384);
+  assert.equal(getModelMetadata("orvix/auto").toolCalling, false);
+  assert.equal(getModelMetadata("orvix/deepseek-v4-flash").maxOutputTokens, 384_000);
 });
 
 test("uses exactly the discovered catalog and advertised metadata", () => {
@@ -77,6 +84,33 @@ test("uses exactly the discovered catalog and advertised metadata", () => {
   );
 });
 
+test("normalizes managed names instead of trusting provider-prefixed API labels", () => {
+  const models = orderModelMetadata([
+    { id: "orvix/mimo-v2.5", name: "Orvix MIMO V2.5" },
+    { id: "orvix/custom-chat", name: "Orvix Custom Chat" },
+  ]);
+  assert.equal(models.find(({ id }) => id === "orvix/mimo-v2.5")?.name, "MiMo-V2.5");
+  assert.equal(models.find(({ id }) => id === "orvix/custom-chat")?.name, "Custom Chat");
+});
+
+test("prefers live nested Orvix capabilities over managed fallbacks", () => {
+  const [model] = orderModelMetadata([
+    {
+      id: "orvix/deepseek-v4-pro",
+      capabilities: {
+        max_output_tokens: 384_000,
+        reasoning_effort: false,
+        vision: true,
+        tools: false,
+      },
+    },
+  ]);
+  assert.equal(model.maxOutputTokens, 384_000);
+  assert.equal(model.reasoningEffort, false);
+  assert.equal(model.imageInput, true);
+  assert.equal(model.toolCalling, false);
+});
+
 test("uses live capability flags without sending undocumented reasoning controls", () => {
   const [live] = orderModelMetadata([
     {
@@ -105,25 +139,82 @@ test("keeps unknown models conservative while allowing native metadata enrichmen
   assert.equal(enriched.releaseDate, "2025-12-01");
 });
 
-test("uses the official managed capability matrix for discovered models", () => {
+test("uses the official managed route metadata for discovered models", () => {
   const models = orderModelMetadata([
+    { id: "orvix/deepseek-v4-pro" },
+    { id: "orvix/gemini-3.8-flash" },
     { id: "orvix/glm-5.3-flash" },
-    { id: "orvix/gemini-3.7-flash" },
+    { id: "orvix/mimo-v2.5" },
+    { id: "orvix/minimax-m3" },
     { id: "orvix/qwen-3.8-max" },
     { id: "orvix/kimi-k3" },
   ]);
   assert.deepEqual(
-    models.map(({ id, imageInput, toolCalling, reasoningEffort }) => ({
+    models.map(({ id, contextLength, maxOutputTokens, imageInput, toolCalling, reasoningEffort }) => ({
       id,
+      contextLength,
+      maxOutputTokens,
       imageInput,
       toolCalling,
       reasoningEffort,
     })),
     [
-      { id: "orvix/gemini-3.7-flash", imageInput: true, toolCalling: true, reasoningEffort: false },
-      { id: "orvix/glm-5.3-flash", imageInput: false, toolCalling: false, reasoningEffort: true },
-      { id: "orvix/kimi-k3", imageInput: false, toolCalling: true, reasoningEffort: true },
-      { id: "orvix/qwen-3.8-max", imageInput: true, toolCalling: true, reasoningEffort: true },
+      {
+        id: "orvix/deepseek-v4-pro",
+        contextLength: 450_000,
+        maxOutputTokens: 384_000,
+        imageInput: false,
+        toolCalling: true,
+        reasoningEffort: true,
+      },
+      {
+        id: "orvix/gemini-3.8-flash",
+        contextLength: 450_000,
+        maxOutputTokens: 32_000,
+        imageInput: true,
+        toolCalling: true,
+        reasoningEffort: false,
+      },
+      {
+        id: "orvix/glm-5.3-flash",
+        contextLength: 450_000,
+        maxOutputTokens: 131_072,
+        imageInput: false,
+        toolCalling: false,
+        reasoningEffort: false,
+      },
+      {
+        id: "orvix/kimi-k3",
+        contextLength: 450_000,
+        maxOutputTokens: 16_384,
+        imageInput: false,
+        toolCalling: true,
+        reasoningEffort: false,
+      },
+      {
+        id: "orvix/mimo-v2.5",
+        contextLength: 450_000,
+        maxOutputTokens: 128_000,
+        imageInput: true,
+        toolCalling: true,
+        reasoningEffort: false,
+      },
+      {
+        id: "orvix/minimax-m3",
+        contextLength: 450_000,
+        maxOutputTokens: 32_768,
+        imageInput: false,
+        toolCalling: true,
+        reasoningEffort: false,
+      },
+      {
+        id: "orvix/qwen-3.8-max",
+        contextLength: 450_000,
+        maxOutputTokens: 32_768,
+        imageInput: true,
+        toolCalling: true,
+        reasoningEffort: false,
+      },
     ],
   );
 });

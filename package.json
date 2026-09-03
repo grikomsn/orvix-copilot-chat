@@ -88,18 +88,22 @@
         "orvixCopilot.reasoningEffort": {
           "type": "string",
           "enum": [
+            "none",
             "minimal",
             "low",
             "medium",
             "high",
+            "xhigh",
             "max"
           ],
           "default": "high",
           "enumDescriptions": [
+            "Disable reasoning for the fastest response.",
             "Use minimal reasoning for the fastest, cheapest responses.",
             "Use less reasoning for lower latency and cost.",
             "Balance reasoning depth, latency, and cost.",
             "Use deeper reasoning for complex tasks.",
+            "Use extra-high reasoning for especially difficult tasks.",
             "Use the model's maximum reasoning effort."
           ],
           "description": "Default Orvix reasoning effort. A Copilot model-picker selection overrides this value."

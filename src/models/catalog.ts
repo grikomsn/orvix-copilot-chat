@@ -32,6 +32,7 @@ export interface OrvixApiModel {
   readonly max_completion_tokens?: unknown;
   readonly input_modalities?: unknown;
   readonly architecture?: unknown;
+  readonly capabilities?: unknown;
   readonly pricing?: unknown;
   readonly tool_calling?: unknown;
   readonly tool_call?: unknown;
@@ -40,27 +41,48 @@ export interface OrvixApiModel {
   readonly owned_by?: unknown;
 }
 
-export const FALLBACK_MODEL_METADATA: readonly OrvixModelMetadata[] = [
-  model("orvix/auto", 128_000, DEFAULT_MAX_OUTPUT_TOKENS, false, true),
-  model("orvix/muse-spark-1.2", 1_000_000, 32_000, true, true, true),
-];
-
-const MANAGED_CAPABILITIES = new Map<string, Pick<OrvixModelMetadata, "imageInput" | "toolCalling" | "reasoningEffort">>([
-  ["orvix/auto", { imageInput: false, toolCalling: true, reasoningEffort: false }],
-  ["orvix/muse-spark-1.2", { imageInput: true, toolCalling: true, reasoningEffort: true }],
-  ["orvix/muse-spark-1.3", { imageInput: true, toolCalling: true, reasoningEffort: true }],
-  ["orvix/glm-5.3-flash", { imageInput: false, toolCalling: false, reasoningEffort: true }],
-  ["orvix/gpt-5.6-luna", { imageInput: true, toolCalling: true, reasoningEffort: true }],
-  ["orvix/deepseek-v4-flash", { imageInput: false, toolCalling: true, reasoningEffort: true }],
-  ["orvix/gemini-3.7-flash", { imageInput: true, toolCalling: true, reasoningEffort: false }],
-  ["orvix/minimax-m3", { imageInput: false, toolCalling: true, reasoningEffort: true }],
-  ["orvix/qwen-3.8-max", { imageInput: true, toolCalling: true, reasoningEffort: true }],
-  ["orvix/deepseek-v4-pro", { imageInput: false, toolCalling: true, reasoningEffort: true }],
-  ["orvix/kimi-k3", { imageInput: false, toolCalling: true, reasoningEffort: true }],
+const MANAGED_MODEL_NAMES = new Map<string, string>([
+  ["orvix/auto", "Orvix Auto"],
+  ["orvix/muse-spark-1.2", "Muse Spark 1.2"],
+  ["orvix/muse-spark-1.3", "Muse Spark 1.3"],
+  ["orvix/mimo-v2.5", "MiMo-V2.5"],
+  ["orvix/mimo-v2.5-pro", "MiMo-V2.5-Pro"],
+  ["orvix/glm-5.3-flash", "GLM 5.3 Flash"],
+  ["orvix/gpt-5.6-luna", "GPT-5.6 Luna"],
+  ["orvix/deepseek-v4-flash", "DeepSeek V4 Flash"],
+  ["orvix/deepseek-v4-pro", "DeepSeek V4 Pro"],
+  ["orvix/gemini-3.7-flash", "Gemini 3.7 Flash"],
+  ["orvix/gemini-3.8-flash", "Gemini 3.8 Flash"],
+  ["orvix/minimax-m3", "MiniMax M3"],
+  ["orvix/qwen-3.8-max", "Qwen 3.8 Max"],
+  ["orvix/kimi-k3", "Kimi K3"],
 ]);
 
+// The fallback catalogue mirrors Orvix's enforced per-request ceilings and
+// route capabilities. Live nested capabilities override these values.
+const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
+  modelEntry("orvix/auto", 450_000, 16_384),
+  modelEntry("orvix/muse-spark-1.2", 450_000, 80_000, true, true, true),
+  modelEntry("orvix/muse-spark-1.3", 450_000, 80_000, true, true, true),
+  modelEntry("orvix/mimo-v2.5", 450_000, 128_000, true, true),
+  modelEntry("orvix/mimo-v2.5-pro", 450_000, 128_000, false, true),
+  modelEntry("orvix/glm-5.3-flash", 450_000, 131_072),
+  modelEntry("orvix/gpt-5.6-luna", 450_000, 128_000, true, true, true),
+  modelEntry("orvix/deepseek-v4-flash", 450_000, 384_000, false, true),
+  modelEntry("orvix/deepseek-v4-pro", 450_000, 384_000, false, true, true),
+  modelEntry("orvix/gemini-3.7-flash", 450_000, 32_000, true, true),
+  modelEntry("orvix/gemini-3.8-flash", 450_000, 32_000, true, true),
+  modelEntry("orvix/minimax-m3", 450_000, 32_768, false, true),
+  modelEntry("orvix/qwen-3.8-max", 450_000, 32_768, true, true),
+  modelEntry("orvix/kimi-k3", 450_000, 16_384, false, true),
+]);
+
+export const FALLBACK_MODEL_METADATA: readonly OrvixModelMetadata[] = [
+  managedModel("orvix/auto"),
+  managedModel("orvix/muse-spark-1.2"),
+];
+
 const PREFERRED_ORDER = new Map<string, number>(FALLBACK_MODELS.map((id, index) => [id, index]));
-const FALLBACK_METADATA_BY_ID = new Map(FALLBACK_MODEL_METADATA.map((metadata) => [metadata.id, metadata]));
 
 export function isOrvixChatModel(id: string): boolean {
   const value = id.trim().toLowerCase();
@@ -77,9 +99,7 @@ export function orderModels(ids: readonly string[]): string[] {
 
 export function getModelMetadata(id: string): OrvixModelMetadata {
   const canonical = canonicalModelId(id);
-  return (
-    FALLBACK_METADATA_BY_ID.get(canonical) ?? model(canonical, DEFAULT_MAX_INPUT_TOKENS, DEFAULT_MAX_OUTPUT_TOKENS)
-  );
+  return MANAGED_MODEL_METADATA.get(canonical) ?? model(canonical, DEFAULT_MAX_INPUT_TOKENS, DEFAULT_MAX_OUTPUT_TOKENS);
 }
 
 export function resolveMaxOutputTokens(configured: number, advertised: number): number {
@@ -123,7 +143,10 @@ export function formatTokenLimit(tokens: number): string {
 }
 
 export function formatModelName(id: string): string {
-  return id
+  const canonical = canonicalModelId(id);
+  const managedName = MANAGED_MODEL_NAMES.get(canonical);
+  if (managedName) return managedName;
+  return canonical
     .replaceAll("/", " ")
     .split(/[-\s]+/)
     .map((part) => {
@@ -138,22 +161,34 @@ function modelMetadataFromApi(raw: OrvixApiModel): OrvixModelMetadata | undefine
   const id = canonicalModelId(raw.id);
   const fallback = getModelMetadata(id);
   const architecture = record(raw.architecture);
+  const capabilities = record(raw.capabilities);
   const modalities = stringArray(raw.input_modalities) ?? stringArray(architecture?.input_modalities);
   const rawName = typeof raw.name === "string" ? raw.name : "";
-  const managedCapabilities = MANAGED_CAPABILITIES.get(id);
+  const managedMetadata = MANAGED_MODEL_METADATA.get(id);
   return {
     id,
-    name: rawName.trim() ? rawName.replace(/^Orvix:\s*/i, "").trim() : fallback.name,
+    name: managedMetadata
+      ? fallback.name
+      : rawName.trim()
+        ? rawName.replace(/^Orvix(?::|\s)\s*/i, "").trim()
+        : fallback.name,
     version: typeof raw.version === "string" && raw.version ? raw.version : fallback.version,
     contextLength:
       positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len) ?? fallback.contextLength,
-    maxOutputTokens: positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens) ?? fallback.maxOutputTokens,
+    maxOutputTokens:
+      positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens ?? capabilities?.max_output_tokens) ??
+      fallback.maxOutputTokens,
     imageInput:
+      boolean(capabilities?.vision) ??
       boolean(modalities?.some((value) => value.toLowerCase() === "image")) ??
-      managedCapabilities?.imageInput ??
+      managedMetadata?.imageInput ??
       /(?:vision|\bvl\b)/i.test(rawName),
-    toolCalling: boolean(raw.tool_calling ?? raw.tool_call) ?? managedCapabilities?.toolCalling ?? fallback.toolCalling,
-    reasoningEffort: managedCapabilities?.reasoningEffort ?? false,
+    toolCalling:
+      boolean(raw.tool_calling ?? raw.tool_call ?? capabilities?.tools) ??
+      managedMetadata?.toolCalling ??
+      fallback.toolCalling,
+    reasoningEffort:
+      boolean(capabilities?.reasoning_effort) ?? managedMetadata?.reasoningEffort ?? fallback.reasoningEffort,
     ...(typeof raw.description === "string" && raw.description.trim() ? { description: raw.description.trim() } : {}),
     ...(unixDate(raw.created) ? { releaseDate: unixDate(raw.created) } : {}),
     ...(typeof raw.owned_by === "string" && raw.owned_by.trim() ? { ownedBy: raw.owned_by.trim() } : {}),
@@ -180,6 +215,23 @@ function model(
     reasoningEffort,
     cost: orvixModelCost(id),
   };
+}
+
+function modelEntry(
+  id: string,
+  contextLength: number,
+  maxOutputTokens: number,
+  imageInput = false,
+  toolCalling = false,
+  reasoningEffort = false,
+): readonly [string, OrvixModelMetadata] {
+  return [id, model(id, contextLength, maxOutputTokens, imageInput, toolCalling, reasoningEffort)];
+}
+
+function managedModel(id: string): OrvixModelMetadata {
+  const metadata = MANAGED_MODEL_METADATA.get(id);
+  if (!metadata) throw new Error(`Missing managed model metadata for ${id}`);
+  return metadata;
 }
 
 function canonicalModelId(id: string): string {

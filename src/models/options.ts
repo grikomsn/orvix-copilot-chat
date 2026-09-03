@@ -1,6 +1,6 @@
 import type { OrvixModelMetadata } from "./catalog";
 
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "max";
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface ThinkingProfile {
   readonly values: readonly ReasoningEffort[];
@@ -9,36 +9,25 @@ export interface ThinkingProfile {
 
 type ModelIdentity = Pick<OrvixModelMetadata, "id" | "reasoningEffort">;
 
-const FULL_PROFILE: ThinkingProfile = {
-  values: ["minimal", "low", "medium", "high", "max"],
+const MUSE_PROFILE: ThinkingProfile = {
+  values: ["minimal", "low", "medium", "high", "xhigh"],
   defaultValue: "high",
 };
 
-// Verified against the live Orvix API (2026-09-03): Orvix forwards
-// reasoning_effort to the upstream provider, so models reject values their
-// upstream does not support (surfaced as HTTP 502 with no JSON body).
-// "none" is rejected on every model — use thinking:{"type":"disabled"} for off.
-const GLM_53_FLASH_PROFILE: ThinkingProfile = {
-  values: ["low", "high"],
+const GPT_56_LUNA_PROFILE: ThinkingProfile = {
+  values: ["none", "low", "medium", "high", "xhigh", "max"],
   defaultValue: "high",
 };
-const GPT_56_LUNA_PROFILE: ThinkingProfile = {
-  values: ["low", "medium", "high", "max"],
+const DEEPSEEK_V4_PRO_PROFILE: ThinkingProfile = {
+  values: ["none", "low", "high", "max"],
   defaultValue: "high",
 };
 
 const THINKING_PROFILES = new Map<string, ThinkingProfile>([
-  ["orvix/auto", FULL_PROFILE],
-  ["orvix/muse-spark-1.2", FULL_PROFILE],
-  ["orvix/muse-spark-1.3", FULL_PROFILE],
-  ["orvix/deepseek-v4-flash", FULL_PROFILE],
-  ["orvix/deepseek-v4-pro", FULL_PROFILE],
-  ["orvix/gemini-3.7-flash", FULL_PROFILE],
-  ["orvix/glm-5.3-flash", GLM_53_FLASH_PROFILE],
+  ["orvix/muse-spark-1.2", MUSE_PROFILE],
+  ["orvix/muse-spark-1.3", MUSE_PROFILE],
+  ["orvix/deepseek-v4-pro", DEEPSEEK_V4_PRO_PROFILE],
   ["orvix/gpt-5.6-luna", GPT_56_LUNA_PROFILE],
-  ["orvix/kimi-k3", FULL_PROFILE],
-  ["orvix/minimax-m3", FULL_PROFILE],
-  ["orvix/qwen-3.8-max", FULL_PROFILE],
 ]);
 
 export function buildThinkingSchema(model: ModelIdentity): {
@@ -86,15 +75,20 @@ export function applyReasoningEffort(
   effort: ReasoningEffort,
 ): Record<string, unknown> {
   // Orvix forwards OpenAI-compatible reasoning_effort values to upstream
-  // providers. Verified against the live API: "none" is rejected with HTTP
-  // 502 on every model, so the lowest exposed value is "minimal".
+  // providers. The per-model profile limits this to documented semantic values.
   return { ...body, reasoning_effort: effort };
 }
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return (
     typeof value === "string" &&
-    (value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "max")
+    (value === "none" ||
+      value === "minimal" ||
+      value === "low" ||
+      value === "medium" ||
+      value === "high" ||
+      value === "xhigh" ||
+      value === "max")
   );
 }
 
@@ -104,6 +98,8 @@ function label(value: ReasoningEffort): string {
 
 function description(value: ReasoningEffort): string {
   switch (value) {
+    case "none":
+      return "Disable reasoning for the fastest response";
     case "minimal":
       return "Use minimal reasoning for the fastest, cheapest responses";
     case "low":
@@ -112,6 +108,8 @@ function description(value: ReasoningEffort): string {
       return "Balance reasoning depth, latency, and cost";
     case "high":
       return "Use deeper reasoning for complex tasks";
+    case "xhigh":
+      return "Use extra-high reasoning for especially difficult tasks";
     case "max":
       return "Use the model's maximum reasoning effort";
   }
