@@ -27,6 +27,8 @@ Provider-entry discovery uses `https://api.orvix.id/v1/models`. The live respons
 | --- | --- |
 | **Orvix: Manage Connection** | Open the connection workflow |
 | **Orvix: Configure API Key** | Validate and store a legacy key in VS Code Secret Storage |
+| **Orvix: Import Usage Session** | Paste a browser session token to unlock credits/usage on the gateway |
+| **Orvix: Remove Usage Session** | Remove the imported gateway session |
 | **Orvix: Refresh Models** | Refresh the live project model catalog |
 | **Orvix: Test Inference** | Send a small non-streaming verification request |
 | **Orvix: Open API Keys** | Open the Orvix API Keys page |
@@ -61,9 +63,24 @@ The per-request picker selection overrides `orvixCopilot.reasoningEffort`. The
 default is `high`, and unsupported values fall back to the model's profile
 default.
 
+## Credits and usage
+
+Inference uses the `orv-sk_live_` API key, which is inferencing-only. The Orvix
+**gateway** (`gateway.orvix.id`) that serves credits and usage is authenticated by
+a **user session** instead. To populate the credits/usage status bar:
+
+1. Sign in at <https://platform.orvix.id> and open your browser DevTools console.
+2. Run `JSON.parse(localStorage['orvix.auth.session'])` and copy the `token` value.
+3. Run **Orvix: Import Usage Session** (or **Orvix: Show Usage and Credits** → **Import usage session**) and paste it.
+
+The token is stored in VS Code Secret Storage. It expires after about an hour,
+so re-import when prompted. Without it, the extension still shows locally
+tracked request/token totals for the current session from the inference stream.
+
 ## Troubleshooting
 
 - **401:** verify the complete key starts with `orv-sk_live_` and includes `ai:invoke`.
+- **401 on Usage/Credits:** the gateway needs a browser session; run **Orvix: Import Usage Session**.
 - **402:** add Orvix Credits for managed `orvix/*` models.
 - **403:** the key is not allowed to use the selected funding source.
 - **429:** the key's rate or monthly spend limit was reached.

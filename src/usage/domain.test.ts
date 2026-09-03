@@ -254,3 +254,37 @@ test("handles empty snapshots in display helpers", () => {
   assert.equal(formatUsageStatusBar({ apiError: "boom" }), "$(warning) Orvix unavailable");
   assert.equal(formatUsageRows({})[0].kind, "empty");
 });
+
+test("degrades gracefully when the gateway is unreachable", () => {
+  // The gateway is authenticated by a user session JWT, not the API key, so a
+  // 401 leaves no credits/summary. Local tracking must still render.
+  const snapshot = {
+    apiError: "Orvix usage requires a browser sign-in (the API key is inferencing-only)",
+    tracked: {
+      requests: 5,
+      promptTokens: 100,
+      completionTokens: 50,
+      totalTokens: 150,
+      cachedTokens: 10,
+      reasoningTokens: 2,
+      estimatedCostUsd: 0,
+    },
+    lastRequest: { modelId: "orvix/glm-5.3-flash", recordedAt: 1000, totalTokens: 30 },
+    updatedAt: 1000,
+  };
+  assert.match(formatUsageStatusBar(snapshot), /5 req/);
+  assert.match(formatUsageTooltip(snapshot), /browser sign-in/);
+  assert.match(formatUsageTooltip(snapshot), /Tracked session: 5 requests/);
+  const rows = formatUsageRows(snapshot);
+  assert.ok(rows.some((row) => row.kind === "request" && row.label.includes("orvix/glm-5.3-flash")));
+  assert.ok(rows.some((row) => row.kind === "requests" && row.label.includes("5 requests")));
+  assert.ok(rows.some((row) => row.kind === "warning" && row.label.includes("Orvix usage unavailable")));
+});
+
+test("shows tracked totals on the status bar without gateway credits", () => {
+  const status = formatUsageStatusBar({
+    tracked: { requests: 12, promptTokens: 0, completionTokens: 0, totalTokens: 900, cachedTokens: 0, reasoningTokens: 0, estimatedCostUsd: 0 },
+  });
+  assert.match(status, /12 req/);
+  assert.match(status, /900 tok/);
+});

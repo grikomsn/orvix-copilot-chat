@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { OrvixAuth } from "./auth/auth";
+import { OrvixAuth, type GatewaySession } from "./auth/auth";
 import { messageOf } from "./errors";
 import {
   FALLBACK_MODEL_METADATA,
@@ -110,11 +110,22 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
    * @see {@link getUsageSnapshot}, {@link onDidChangeUsage}
    */
   async refreshUsage(): Promise<OrvixUsageSnapshot> {
+    const session = await this.requireGatewaySession(false);
+    if (!session) {
+      // No gateway session: the API key is inferencing-only, so fall back to
+      // local session tracking and explain the limitation.
+      const message = "Orvix usage requires a browser sign-in (the API key is inferencing-only)";
+      this.mergeAndEmitUsage({ apiError: message, updatedAt: Date.now() });
+      return this.getUsageSnapshot();
+    }
+
     try {
-      const apiKey = await this.requireApiKey(false, "legacy");
       const billingResponse = await fetch(ORVIX_GATEWAY_ENDPOINTS.billing, {
-        headers: this.gatewayHeaders(apiKey, "application/json"),
+        headers: this.gatewaySessionHeaders(session, "application/json"),
       });
+      if (billingResponse.status === 401) {
+        throw new Error("Orvix usage requires a refreshed browser sign-in");
+      }
       if (!billingResponse.ok) throw await apiError("Unable to read Orvix billing", billingResponse);
       const billing = parseBillingPayload(await billingResponse.json());
       this.mergeAndEmitUsage({ credits: billing, apiError: undefined, updatedAt: Date.now() });
@@ -123,8 +134,11 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       try {
         const transactionResponse = await fetch(
           `${ORVIX_GATEWAY_ENDPOINTS.transactions}?limit=50&offset=0`,
-          { headers: this.gatewayHeaders(apiKey, "application/json") },
+          { headers: this.gatewaySessionHeaders(session, "application/json") },
         );
+        if (transactionResponse.status === 401) {
+          throw new Error("Orvix usage requires a refreshed browser sign-in");
+        }
         if (!transactionResponse.ok)
           throw await apiError("Unable to read Orvix credit transactions", transactionResponse);
         transactions = parseTransactionsPayload(await transactionResponse.json());
@@ -139,10 +153,12 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     }
 
     try {
-      const apiKey = await this.requireApiKey(false, "legacy");
       const summaryResponse = await fetch(`${ORVIX_GATEWAY_ENDPOINTS.usageSummary}?range=7d`, {
-        headers: this.gatewayHeaders(apiKey, "application/json"),
+        headers: this.gatewaySessionHeaders(session, "application/json"),
       });
+      if (summaryResponse.status === 401) {
+        throw new Error("Orvix usage requires a refreshed browser sign-in");
+      }
       if (!summaryResponse.ok) throw await apiError("Unable to read Orvix usage summary", summaryResponse);
       const summary = parseUsageSummaryPayload(await summaryResponse.json());
       this.mergeAndEmitUsage({ summary, updatedAt: Date.now() });
@@ -151,6 +167,16 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     }
 
     return this.getUsageSnapshot();
+  }
+
+  /** Stores a browser gateway session (imported by the user) for usage access. */
+  async configureGatewaySession(session: GatewaySession): Promise<void> {
+    await this.auth.storeGatewaySession(session);
+    void this.refreshUsage();
+  }
+
+  async clearGatewaySession(): Promise<void> {
+    await this.auth.clearGatewaySession();
   }
 
   async configureApiKey(apiKey: string): Promise<string[]> {
@@ -443,13 +469,33 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     return orvixHeaders(apiKey, accept, this.userAgent);
   }
 
-  /** Builds headers for the Orvix gateway, which uses the API key as a Bearer token. */
+  /** Builds headers for the Orvix gateway with the inferencing API key. */
   private gatewayHeaders(apiKey: string, accept: string): Record<string, string> {
     return {
       Authorization: `Bearer ${apiKey}`,
       Accept: accept,
       "User-Agent": this.userAgent,
     };
+  }
+
+  /** Builds headers for the Orvix gateway using a user session token. */
+  private gatewaySessionHeaders(session: GatewaySession, accept: string): Record<string, string> {
+    return {
+      Authorization: `Bearer ${session.token}`,
+      Accept: accept,
+      "User-Agent": this.userAgent,
+    };
+  }
+
+  /** Loads the gateway session if present, optionally prompting to import one. */
+  private async requireGatewaySession(prompt: boolean): Promise<GatewaySession | undefined> {
+    const session = await this.auth.getGatewaySession();
+    if (session) return session;
+    if (prompt) {
+      await vscode.commands.executeCommand("orvixCopilot.configureGatewaySession");
+      return this.auth.getGatewaySession();
+    }
+    return undefined;
   }
 
   private async fetchInference(init: RequestInit): Promise<Response> {

@@ -391,12 +391,16 @@ export function recordApiRequestUsage(
 /**
  * Renders the status-bar text for a usage snapshot.
  *
- * Prefers the live credit balance, then tracked session spend, then falls back
- * to an availability placeholder.
+ * Prefers the live credit balance, then locally tracked session totals, then
+ * falls back to an availability placeholder. When the gateway is unreachable,
+ * the locally tracked request/token counts still render so the status bar is
+ * never blanked.
  *
  * @example
  * formatUsageStatusBar({ credits: { availableMicrousd: 250000, currency: "USD" } });
  * // => "$(credit-card) Orvix $0.25"
+ * formatUsageStatusBar({ tracked: { requests: 5, totalTokens: 150, ... } });
+ * // => "$(graph) Orvix 5 req · 150 tok"
  *
  * @see {@link formatUsageTooltip}, {@link formatUsageRows}
  */
@@ -405,7 +409,7 @@ export function formatUsageStatusBar(snapshot: OrvixUsageSnapshot): string {
     return `$(credit-card) Orvix ${formatCreditsUsd(snapshot.credits.availableMicrousd, snapshot.credits.currency)}`;
   }
   if (snapshot.tracked?.requests) {
-    return `$(graph) Orvix ${formatUsd(snapshot.tracked.estimatedCostUsd)}`;
+    return `$(graph) Orvix ${snapshot.tracked.requests.toLocaleString()} req · ${formatCompactTokens(snapshot.tracked.totalTokens)} tok`;
   }
   if (snapshot.apiError) return "$(warning) Orvix unavailable";
   return "$(pulse) Orvix";
@@ -429,8 +433,8 @@ export function formatUsageTooltip(snapshot: OrvixUsageSnapshot): string {
   appendSummaryLines(lines, snapshot.summary);
   appendTrackedLines(lines, snapshot);
   if (snapshot.transactions?.length) lines.push(`Recent transactions: ${snapshot.transactions.length}`);
-  if (!snapshot.credits && !snapshot.summary && !snapshot.tracked) lines.push("No live usage observed yet");
-  if (snapshot.apiError) lines.push("Orvix usage API unavailable");
+  if (snapshot.apiError) lines.push("Gateway usage unavailable (browser sign-in required); showing local session tracking.");
+  else if (!snapshot.credits && !snapshot.summary && !snapshot.tracked) lines.push("No live usage observed yet");
   if (snapshot.updatedAt) lines.push(`Updated ${new Date(snapshot.updatedAt).toLocaleString()}`);
   lines.push("Click for details");
   return lines.join("\n");
@@ -478,12 +482,16 @@ export interface UsageDisplayRow {
 /**
  * Converts a usage snapshot into quick-pick rows for the usage command.
  *
- * Returns an "empty" row when nothing has been observed yet, so the quick pick
- * is never blank.
+ * Locally tracked request/token rows are always shown when present. When the
+ * gateway is unavailable (e.g. a 401 because the API key is inferencing-only),
+ * a warning row explains the limitation and falls back to a single empty row
+ * only if nothing has been observed yet, so the quick pick is never blank.
  *
  * @example
  * formatUsageRows({ credits: { availableMicrousd: 250000 } });
  * // => [{ kind: "credits", label: "Available credits: $0.25", description: "Orvix project credits" }]
+ * formatUsageRows({ apiError: "…", tracked: { requests: 5, ... } });
+ * // => [..., { kind: "warning", label: "Orvix usage unavailable", description: "…" }]
  *
  * @see {@link UsageDisplayRow}, {@link formatUsageStatusBar}
  */
@@ -492,13 +500,26 @@ export function formatUsageRows(snapshot: OrvixUsageSnapshot): UsageDisplayRow[]
     ...creditsRow(snapshot.credits),
     ...summaryRows(snapshot.summary),
     ...trackedRows(snapshot),
+    ...warningRow(snapshot),
   ];
   if (rows.length) return rows;
   return [
     {
       kind: "empty",
-      label: snapshot.apiError ? "Orvix usage unavailable" : "No live usage observed yet",
-      description: snapshot.apiError ?? "Send a request or refresh to load credits",
+      label: "No live usage observed yet",
+      description: "Send a request or refresh to load credits",
+    },
+  ];
+}
+
+/** Builds the gateway-unavailable warning row, if any. @see {@link formatUsageRows} */
+function warningRow(snapshot: OrvixUsageSnapshot): UsageDisplayRow[] {
+  if (!snapshot.apiError) return [];
+  return [
+    {
+      kind: "warning",
+      label: "Orvix usage unavailable",
+      description: snapshot.apiError,
     },
   ];
 }

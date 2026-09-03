@@ -62,6 +62,14 @@
         "title": "Orvix: Show Usage and Credits"
       },
       {
+        "command": "orvixCopilot.configureGatewaySession",
+        "title": "Orvix: Import Usage Session"
+      },
+      {
+        "command": "orvixCopilot.removeGatewaySession",
+        "title": "Orvix: Remove Usage Session"
+      },
+      {
         "command": "orvixCopilot.testConnection",
         "title": "Orvix: Test Inference"
       },

@@ -1,9 +1,19 @@
 import { createHash } from "node:crypto";
 
 export const API_KEY_SECRET = "orvixCopilot.apiKey";
+export const GATEWAY_SESSION_SECRET = "orvixCopilot.gatewaySession";
 
 export function credentialReference(apiKey: string): string {
   return createHash("sha256").update(apiKey.trim()).digest("hex").slice(0, 16);
+}
+
+/**
+ * A browser gateway session used to read billing and usage. The access token
+ * is short-lived (~1h) and backed by a rotating refresh token.
+ */
+export interface GatewaySession {
+  token: string;
+  refreshToken?: string;
 }
 
 export interface SecretStore {
@@ -33,5 +43,41 @@ export class OrvixAuth {
 
   async clearApiKey(): Promise<void> {
     await this.secrets.delete(API_KEY_SECRET);
+  }
+
+  /** Returns the stored gateway session, if any. */
+  async getGatewaySession(): Promise<GatewaySession | undefined> {
+    const raw = await this.secrets.get(GATEWAY_SESSION_SECRET);
+    if (!raw) return undefined;
+    try {
+      const parsed = JSON.parse(raw) as Partial<GatewaySession>;
+      const token = typeof parsed.token === "string" ? parsed.token.trim() : "";
+      if (!token) return undefined;
+      return {
+        token,
+        ...(typeof parsed.refreshToken === "string" && parsed.refreshToken.trim()
+          ? { refreshToken: parsed.refreshToken.trim() }
+          : {}),
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Persists a gateway session for billing/usage access. */
+  async storeGatewaySession(session: GatewaySession): Promise<void> {
+    const token = session.token.trim();
+    if (!token) throw new Error("Orvix session token cannot be empty");
+    await this.secrets.store(
+      GATEWAY_SESSION_SECRET,
+      JSON.stringify({
+        token,
+        ...(session.refreshToken?.trim() ? { refreshToken: session.refreshToken.trim() } : {}),
+      }),
+    );
+  }
+
+  async clearGatewaySession(): Promise<void> {
+    await this.secrets.delete(GATEWAY_SESSION_SECRET);
   }
 }
