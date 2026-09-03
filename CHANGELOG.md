@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3
+
+### Patch Changes
+
+- 28066d0: Correct managed-model context and output limits, route-specific capabilities, available reasoning-effort controls, and picker names.
+
 ## 0.3.2
 
 ### Patch Changes
