@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+### Patch Changes
+
+- 0ea5e27: Use Orvix's managed-model capability catalogue, keep unknown models conservative, group models by native family, and retry documented pre-stream rate limits.
+
 ## 0.1.0
 
 ### Minor Changes
