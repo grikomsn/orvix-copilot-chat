@@ -41,23 +41,23 @@ export interface OrvixApiModel {
 }
 
 // The managed catalogue endpoint currently returns IDs without limits or
-// capabilities. Limits come from the upstream model catalogues; capabilities
-// reflect the route-specific matrix published by platform.orvix.id/models.
+// capabilities. Limits are the enforced Orvix per-request ceilings;
+// capabilities reflect the route-specific matrix on platform.orvix.id/models.
 const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
-  modelEntry("orvix/auto", 128_000, DEFAULT_MAX_OUTPUT_TOKENS, false, true),
-  modelEntry("orvix/muse-spark-1.2", 1_048_576, 131_072, true, true, true),
-  modelEntry("orvix/muse-spark-1.3", 1_048_576, 131_072, true, true, true),
-  modelEntry("orvix/mimo-v2.5", 1_048_576, 131_072, true, true),
-  modelEntry("orvix/mimo-v2.5-pro", 1_048_576, 131_072, false, true),
-  modelEntry("orvix/glm-5.3-flash", 1_000_000, 131_072),
-  modelEntry("orvix/gpt-5.6-luna", 1_050_000, 128_000, true, true, true),
-  modelEntry("orvix/deepseek-v4-flash", 1_000_000, 384_000, false, true),
-  modelEntry("orvix/deepseek-v4-pro", 1_000_000, 384_000, false, true, true),
-  modelEntry("orvix/gemini-3.7-flash", 1_048_576, 65_536, true, true),
-  modelEntry("orvix/gemini-3.8-flash", 1_048_576, 65_536, true, true),
-  modelEntry("orvix/minimax-m3", 1_048_576, 512_000, false, true),
-  modelEntry("orvix/qwen-3.8-max", 1_000_000, 131_072, true, true),
-  modelEntry("orvix/kimi-k3", 1_048_576, 131_072, false, true),
+  modelEntry("orvix/auto", 450_000, 80_000, false, true),
+  modelEntry("orvix/muse-spark-1.2", 450_000, 80_000, true, true, true),
+  modelEntry("orvix/muse-spark-1.3", 450_000, 80_000, true, true, true),
+  modelEntry("orvix/mimo-v2.5", 450_000, 128_000, true, true),
+  modelEntry("orvix/mimo-v2.5-pro", 450_000, 128_000, false, true),
+  modelEntry("orvix/glm-5.3-flash", 450_000, 131_072),
+  modelEntry("orvix/gpt-5.6-luna", 450_000, 128_000, true, true, true),
+  modelEntry("orvix/deepseek-v4-flash", 450_000, 65_536, false, true),
+  modelEntry("orvix/deepseek-v4-pro", 450_000, 32_768, false, true, true),
+  modelEntry("orvix/gemini-3.7-flash", 450_000, 32_000, true, true),
+  modelEntry("orvix/gemini-3.8-flash", 450_000, 32_000, true, true),
+  modelEntry("orvix/minimax-m3", 450_000, 32_768, false, true),
+  modelEntry("orvix/qwen-3.8-max", 450_000, 32_768, true, true),
+  modelEntry("orvix/kimi-k3", 450_000, 16_384, false, true),
 ]);
 
 export const FALLBACK_MODEL_METADATA: readonly OrvixModelMetadata[] = [
