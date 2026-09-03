@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+### Patch Changes
+
+- 1574133: Align the extension icon and repository cover with the sibling provider convention: Orvix and GitHub Copilot marks side by side on black.
+
 ## 0.1.1
 
 ### Patch Changes
