@@ -37,8 +37,8 @@ test("provides documented fallback limits", () => {
     id: "orvix/muse-spark-1.2",
     name: "Orvix Muse Spark 1.2",
     version: "unknown",
-    contextLength: 1_000_000,
-    maxOutputTokens: 32_000,
+    contextLength: 1_048_576,
+    maxOutputTokens: 131_072,
     imageInput: true,
     toolCalling: true,
     reasoningEffort: true,
@@ -105,25 +105,82 @@ test("keeps unknown models conservative while allowing native metadata enrichmen
   assert.equal(enriched.releaseDate, "2025-12-01");
 });
 
-test("uses the official managed capability matrix for discovered models", () => {
+test("uses the official managed route metadata for discovered models", () => {
   const models = orderModelMetadata([
+    { id: "orvix/deepseek-v4-pro" },
+    { id: "orvix/gemini-3.8-flash" },
     { id: "orvix/glm-5.3-flash" },
-    { id: "orvix/gemini-3.7-flash" },
+    { id: "orvix/mimo-v2.5" },
+    { id: "orvix/minimax-m3" },
     { id: "orvix/qwen-3.8-max" },
     { id: "orvix/kimi-k3" },
   ]);
   assert.deepEqual(
-    models.map(({ id, imageInput, toolCalling, reasoningEffort }) => ({
+    models.map(({ id, contextLength, maxOutputTokens, imageInput, toolCalling, reasoningEffort }) => ({
       id,
+      contextLength,
+      maxOutputTokens,
       imageInput,
       toolCalling,
       reasoningEffort,
     })),
     [
-      { id: "orvix/gemini-3.7-flash", imageInput: true, toolCalling: true, reasoningEffort: false },
-      { id: "orvix/glm-5.3-flash", imageInput: false, toolCalling: false, reasoningEffort: true },
-      { id: "orvix/kimi-k3", imageInput: false, toolCalling: true, reasoningEffort: true },
-      { id: "orvix/qwen-3.8-max", imageInput: true, toolCalling: true, reasoningEffort: true },
+      {
+        id: "orvix/deepseek-v4-pro",
+        contextLength: 1_000_000,
+        maxOutputTokens: 384_000,
+        imageInput: false,
+        toolCalling: true,
+        reasoningEffort: true,
+      },
+      {
+        id: "orvix/gemini-3.8-flash",
+        contextLength: 1_048_576,
+        maxOutputTokens: 65_536,
+        imageInput: true,
+        toolCalling: true,
+        reasoningEffort: false,
+      },
+      {
+        id: "orvix/glm-5.3-flash",
+        contextLength: 1_000_000,
+        maxOutputTokens: 131_072,
+        imageInput: false,
+        toolCalling: false,
+        reasoningEffort: false,
+      },
+      {
+        id: "orvix/kimi-k3",
+        contextLength: 1_048_576,
+        maxOutputTokens: 131_072,
+        imageInput: false,
+        toolCalling: true,
+        reasoningEffort: false,
+      },
+      {
+        id: "orvix/mimo-v2.5",
+        contextLength: 1_048_576,
+        maxOutputTokens: 131_072,
+        imageInput: true,
+        toolCalling: true,
+        reasoningEffort: false,
+      },
+      {
+        id: "orvix/minimax-m3",
+        contextLength: 1_048_576,
+        maxOutputTokens: 512_000,
+        imageInput: false,
+        toolCalling: true,
+        reasoningEffort: false,
+      },
+      {
+        id: "orvix/qwen-3.8-max",
+        contextLength: 1_000_000,
+        maxOutputTokens: 131_072,
+        imageInput: true,
+        toolCalling: true,
+        reasoningEffort: false,
+      },
     ],
   );
 });

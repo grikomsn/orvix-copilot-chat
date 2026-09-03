@@ -6,23 +6,28 @@ function model(id: string, reasoningEffort = true): { id: string; reasoningEffor
   return { id, reasoningEffort };
 }
 
-test("exposes full reasoning efforts for broadly capable models", () => {
+test("exposes the upstream Muse reasoning efforts", () => {
   const schema = buildThinkingSchema(model("orvix/muse-spark-1.2"));
-  assert.deepEqual(schema?.properties.reasoningEffort.enum, ["minimal", "low", "medium", "high", "max"]);
+  assert.deepEqual(schema?.properties.reasoningEffort.enum, ["minimal", "low", "medium", "high", "xhigh"]);
   assert.equal(schema?.properties.reasoningEffort.default, "high");
   assert.equal(schema?.properties.reasoningEffort.group, "navigation");
 });
 
-test("narrows GLM-5.3 Flash to only low and high", () => {
-  const schema = buildThinkingSchema(model("orvix/glm-5.3-flash"));
-  assert.deepEqual(schema?.properties.reasoningEffort.enum, ["low", "high"]);
-  assert.equal(schema?.properties.reasoningEffort.default, "high");
+test("omits reasoning controls disabled by the managed route", () => {
   assert.equal(buildThinkingSchema(model("orvix/glm-5.3-flash", false)), undefined);
+  assert.equal(buildThinkingSchema(model("orvix/deepseek-v4-flash", false)), undefined);
+  assert.equal(buildThinkingSchema(model("orvix/minimax-m3", false)), undefined);
 });
 
-test("excludes minimal for GPT-5.6 Luna", () => {
+test("uses the documented Luna and DeepSeek effort profiles", () => {
   const schema = buildThinkingSchema(model("orvix/gpt-5.6-luna"));
-  assert.deepEqual(schema?.properties.reasoningEffort.enum, ["low", "medium", "high", "max"]);
+  assert.deepEqual(schema?.properties.reasoningEffort.enum, ["none", "low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(buildThinkingSchema(model("orvix/deepseek-v4-pro"))?.properties.reasoningEffort.enum, [
+    "none",
+    "low",
+    "high",
+    "max",
+  ]);
 });
 
 test("omits the schema for models without reasoning", () => {
@@ -37,13 +42,10 @@ test("per-request effort overrides the workspace default within the profile", ()
 });
 
 test("falls back to the profile default for values the model does not accept", () => {
-  // GLM-5.3 Flash rejects minimal/medium/max; fall back to high.
-  assert.equal(resolveEffortValue(model("orvix/glm-5.3-flash"), { reasoningEffort: "minimal" }, "high"), "high");
-  assert.equal(resolveEffortValue(model("orvix/glm-5.3-flash"), { reasoningEffort: "max" }, "high"), "high");
-  // GPT-5.6 Luna rejects minimal.
+  // GPT-5.6 Luna does not expose minimal.
   assert.equal(resolveEffortValue(model("orvix/gpt-5.6-luna"), { reasoningEffort: "minimal" }, "high"), "high");
   // Unknown/invalid values fall back too.
-  assert.equal(resolveEffortValue(model("orvix/muse-spark-1.2"), { reasoningEffort: "none" }, "high"), "high");
+  assert.equal(resolveEffortValue(model("orvix/muse-spark-1.2"), { reasoningEffort: "max" }, "high"), "high");
   assert.equal(resolveEffortValue(model("orvix/muse-spark-1.2"), undefined, "invalid"), "high");
 });
 
@@ -56,8 +58,8 @@ test("sends Orvix's OpenAI-compatible reasoning_effort parameter", () => {
     model: "orvix/muse-spark-1.2",
     reasoning_effort: "minimal",
   });
-  assert.deepEqual(applyReasoningEffort({ model: "orvix/glm-5.3-flash" }, "high"), {
-    model: "orvix/glm-5.3-flash",
-    reasoning_effort: "high",
+  assert.deepEqual(applyReasoningEffort({ model: "orvix/deepseek-v4-pro" }, "none"), {
+    model: "orvix/deepseek-v4-pro",
+    reasoning_effort: "none",
   });
 });
