@@ -1,15 +1,24 @@
 /** Orvix credits and request usage normalization for VS Code. */
 
+/** A project's live Orvix credit balance, in micro-USD (1 credit = 1e-6 USD). */
 export interface OrvixCreditBalance {
+  /** Orvix project identifier. */
   projectId?: string;
+  /** Display name of the project that owns the balance. */
   projectName?: string;
+  /** ISO 4217 currency code; Orvix credits are denominated in `USD`. */
   currency?: string;
+  /** Spendable balance in micro-USD. */
   availableMicrousd?: number;
+  /** Balance already reserved for in-flight reservations in micro-USD. */
   reservedMicrousd?: number;
+  /** Project billing status, e.g. `active`. */
   status?: string;
+  /** ISO timestamp of the last balance update. */
   updatedAt?: string;
 }
 
+/** Aggregated Orvix gateway usage over a rolling window (default 7 days). */
 export interface OrvixUsageSummary {
   requests?: number;
   errors?: number;
@@ -17,11 +26,14 @@ export interface OrvixUsageSummary {
   completionTokens?: number;
   totalTokens?: number;
   cachedPromptTokens?: number;
+  /** Estimated project spend in USD, covering both credits and BYOK. */
   estimatedCost?: number;
+  /** USD value actually charged against Orvix credits. */
   chargedCredits?: number;
   avgLatencyMs?: number;
 }
 
+/** One immutable credit transaction (reservation, settlement, grant, …). */
 export interface OrvixUsageTransaction {
   id: string;
   type: string;
@@ -31,6 +43,7 @@ export interface OrvixUsageTransaction {
   metadata?: Record<string, unknown>;
 }
 
+/** Token usage of the most recently recorded inference request. */
 export interface ApiRequestUsage {
   modelId: string;
   recordedAt: number;
@@ -41,6 +54,10 @@ export interface ApiRequestUsage {
   reasoningTokens?: number;
 }
 
+/**
+ * Running totals accumulated by {@link recordApiRequestUsage} for the current
+ * VS Code session.
+ */
 export interface TrackedApiUsage {
   requests: number;
   promptTokens: number;
@@ -48,22 +65,41 @@ export interface TrackedApiUsage {
   totalTokens: number;
   cachedTokens: number;
   reasoningTokens: number;
+  /** Placeholder that stays `0` until Orvix exposes per-request cost. */
   estimatedCostUsd: number;
 }
 
+/** Persisted usage state shown by the status bar and the usage quick pick. */
 export interface OrvixUsageSnapshot {
   credits?: OrvixCreditBalance;
   transactions?: OrvixUsageTransaction[];
   summary?: OrvixUsageSummary;
   lastRequest?: ApiRequestUsage;
   tracked?: TrackedApiUsage;
+  /** Human-readable failure message from the last gateway refresh. */
   apiError?: string;
   updatedAt?: number;
 }
 
+/**
+ * Parses a `GET /billing` response into a project credit balance.
+ *
+ * Accepts either the gateway envelope (`{ success, data: {...} }`) or a flat
+ * payload, and drops entries that carry no usable fields.
+ *
+ * @example
+ * parseBillingPayload({
+ *   success: true,
+ *   data: { currency: "USD", availableMicrousd: 250000, reservedMicrousd: 0 },
+ * });
+ * // => { availableMicrousd: 250000, reservedMicrousd: 0, currency: "USD" }
+ *
+ * @see {@link OrvixCreditBalance}
+ */
 export function parseBillingPayload(raw: unknown): OrvixCreditBalance | undefined {
   const root = isRecord(raw) ? raw : undefined;
   if (!root) return undefined;
+  // Unwrap the gateway `{ success, data }` envelope; fall back to a flat payload.
   const data = isRecord(root.data) ? root.data : root;
   const result: OrvixCreditBalance = {
     availableMicrousd: nonNegativeNumber(data.availableMicrousd),
@@ -79,6 +115,8 @@ export function parseBillingPayload(raw: unknown): OrvixCreditBalance | undefine
   if (currency) result.currency = currency;
   if (status) result.status = status;
   if (updatedAt) result.updatedAt = updatedAt;
+  // A payload with no recognized field is treated as absent so callers can
+  // distinguish "no balance" from a malformed response.
   const hasValue = result.availableMicrousd !== undefined
     || result.reservedMicrousd !== undefined
     || projectId !== undefined
@@ -89,9 +127,25 @@ export function parseBillingPayload(raw: unknown): OrvixCreditBalance | undefine
   return hasValue ? result : undefined;
 }
 
+/**
+ * Parses a `GET /usage/summary` response into a rolling usage summary.
+ *
+ * Unknown or non-numeric fields are ignored, so new gateway fields do not
+ * break older versions of the extension.
+ *
+ * @example
+ * parseUsageSummaryPayload({
+ *   success: true,
+ *   data: { requests: 202, totalTokens: 245337, estimatedCost: 0.289464 },
+ * });
+ * // => { requests: 202, totalTokens: 245337, estimatedCost: 0.289464 }
+ *
+ * @see {@link OrvixUsageSummary}
+ */
 export function parseUsageSummaryPayload(raw: unknown): OrvixUsageSummary | undefined {
   const root = isRecord(raw) ? raw : undefined;
   if (!root) return undefined;
+  // Unwrap the gateway `{ success, data }` envelope; fall back to a flat payload.
   const data = isRecord(root.data) ? root.data : root;
   const result: OrvixUsageSummary = {};
   for (const key of [
@@ -111,9 +165,26 @@ export function parseUsageSummaryPayload(raw: unknown): OrvixUsageSummary | unde
   return Object.keys(result).length ? result : undefined;
 }
 
+/**
+ * Parses a `GET /billing/transactions` response into a bounded credit history.
+ *
+ * Entries without an id, and payloads without a `transactions` array, are
+ * dropped. The list is capped at `limit` (default 250) to keep the persisted
+ * snapshot small.
+ *
+ * @example
+ * parseTransactionsPayload({
+ *   success: true,
+ *   data: { transactions: [{ id: "txn_1", type: "promo credit", amountMicrousd: 500000 }] },
+ * });
+ * // => [{ id: "txn_1", type: "promo credit", amountMicrousd: 500000 }]
+ *
+ * @see {@link OrvixUsageTransaction}
+ */
 export function parseTransactionsPayload(raw: unknown, limit = 250): OrvixUsageTransaction[] | undefined {
   const root = isRecord(raw) ? raw : undefined;
   if (!root) return undefined;
+  // Unwrap the gateway `{ success, data }` envelope; fall back to a flat payload.
   const data = isRecord(root.data) ? root.data : root;
   if (!Array.isArray(data.transactions)) return undefined;
   const transactions = data.transactions
@@ -133,6 +204,18 @@ export function parseTransactionsPayload(raw: unknown, limit = 250): OrvixUsageT
   return transactions.length ? transactions : undefined;
 }
 
+/**
+ * Formats a micro-USD amount as a localized currency string.
+ *
+ * Orvix stores credits as micro-USD (1 credit = 1e-6 USD), so the value is
+ * divided by 1,000,000 before formatting.
+ *
+ * @example
+ * formatCreditsUsd(250000); // "$0.25"
+ * formatCreditsUsd(undefined); // "—"
+ *
+ * @see {@link formatUsd}
+ */
 export function formatCreditsUsd(microusd: number | undefined, currency = "USD"): string {
   if (microusd === undefined) return "—";
   const value = microusd / 1_000_000;
@@ -144,6 +227,15 @@ export function formatCreditsUsd(microusd: number | undefined, currency = "USD")
   }).format(value);
 }
 
+/**
+ * Formats a USD amount from the usage summary as a localized currency string.
+ *
+ * @example
+ * formatUsd(0.289464); // "$0.289464"
+ * formatUsd(undefined); // "—"
+ *
+ * @see {@link formatCreditsUsd}
+ */
 export function formatUsd(value: number | undefined): string {
   if (value === undefined) return "—";
   return new Intl.NumberFormat("en-US", {
@@ -154,14 +246,36 @@ export function formatUsd(value: number | undefined): string {
   }).format(value);
 }
 
+/**
+ * Formats a token count using compact notation (e.g. `245.3K`).
+ *
+ * @example
+ * formatCompactTokens(245337); // "245.3K"
+ * formatCompactTokens(undefined); // "—"
+ */
 export function formatCompactTokens(value: number | undefined): string {
   if (value === undefined) return "—";
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
+/**
+ * Normalizes an OpenAI-compatible usage object into the shape VS Code expects
+ * from a `LanguageModelChatProvider` response.
+ *
+ * Accepts both `prompt_tokens`/`completion_tokens` and the Responses API
+ * `input_tokens`/`output_tokens` names, and derives `total_tokens` when the
+ * upstream omits it.
+ *
+ * @example
+ * toProviderUsagePayload({ input_tokens: 8, output_tokens: 3 });
+ * // => { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 }
+ *
+ * @see {@link ProviderUsagePayload}
+ */
 export function toProviderUsagePayload(raw: Record<string, unknown>): ProviderUsagePayload {
   const promptTokens = finiteNumber(raw.prompt_tokens ?? raw.input_tokens);
   const completionTokens = finiteNumber(raw.completion_tokens ?? raw.output_tokens);
+  // Derive a total only when both sides are known; otherwise leave it absent.
   const totalTokens =
     finiteNumber(raw.total_tokens) ??
     (promptTokens !== undefined && completionTokens !== undefined ? promptTokens + completionTokens : undefined);
@@ -188,6 +302,22 @@ export interface ProviderUsagePayload {
   completion_tokens_details?: { reasoning_tokens: number };
 }
 
+/**
+ * Merges a partial usage update into the current snapshot.
+ *
+ * Nested objects (`credits`, `summary`, `tracked`) are shallow-merged so a
+ * refresh of one field never discards another; arrays and scalars are replaced
+ * when the update provides them.
+ *
+ * @example
+ * mergeUsageSnapshot(
+ *   { credits: { availableMicrousd: 1000 } },
+ *   { credits: { reservedMicrousd: 5 }, summary: { requests: 10 } },
+ * );
+ * // => { credits: { availableMicrousd: 1000, reservedMicrousd: 5 }, summary: { requests: 10 } }
+ *
+ * @see {@link OrvixUsageSnapshot}, {@link recordApiRequestUsage}
+ */
 export function mergeUsageSnapshot(
   current: OrvixUsageSnapshot,
   update: OrvixUsageSnapshot,
@@ -203,6 +333,26 @@ export function mergeUsageSnapshot(
   };
 }
 
+/**
+ * Records one inference request into the snapshot and returns a new snapshot.
+ *
+ * Normalizes the raw OpenAI-compatible usage, stores it as `lastRequest`, and
+ * accumulates the deltas into `tracked`. The snapshot is immutable: the input
+ * is never mutated.
+ *
+ * @example
+ * recordApiRequestUsage(
+ *   {},
+ *   { prompt_tokens: 140, completion_tokens: 2, total_tokens: 142 },
+ *   "orvix/glm-5.3-flash",
+ *   1000,
+ * );
+ * // => { lastRequest: { modelId: "orvix/glm-5.3-flash", recordedAt: 1000, ... },
+ * //      tracked: { requests: 1, promptTokens: 140, completionTokens: 2, totalTokens: 142, ... },
+ * //      updatedAt: 1000 }
+ *
+ * @see {@link toProviderUsagePayload}, {@link mergeUsageSnapshot}, {@link ApiRequestUsage}
+ */
 export function recordApiRequestUsage(
   current: OrvixUsageSnapshot,
   raw: Record<string, unknown>,
@@ -225,6 +375,7 @@ export function recordApiRequestUsage(
     ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
   };
   const previous = current.tracked;
+  // Accumulate each request's tokens onto the previous session totals.
   const tracked: TrackedApiUsage = {
     requests: (previous?.requests ?? 0) + 1,
     promptTokens: (previous?.promptTokens ?? 0) + (promptTokens ?? 0),
@@ -237,6 +388,18 @@ export function recordApiRequestUsage(
   return mergeUsageSnapshot(current, { lastRequest, tracked, updatedAt: recordedAt });
 }
 
+/**
+ * Renders the status-bar text for a usage snapshot.
+ *
+ * Prefers the live credit balance, then tracked session spend, then falls back
+ * to an availability placeholder.
+ *
+ * @example
+ * formatUsageStatusBar({ credits: { availableMicrousd: 250000, currency: "USD" } });
+ * // => "$(credit-card) Orvix $0.25"
+ *
+ * @see {@link formatUsageTooltip}, {@link formatUsageRows}
+ */
 export function formatUsageStatusBar(snapshot: OrvixUsageSnapshot): string {
   if (snapshot.credits?.availableMicrousd !== undefined) {
     return `$(credit-card) Orvix ${formatCreditsUsd(snapshot.credits.availableMicrousd, snapshot.credits.currency)}`;
@@ -248,6 +411,18 @@ export function formatUsageStatusBar(snapshot: OrvixUsageSnapshot): string {
   return "$(pulse) Orvix";
 }
 
+/**
+ * Builds the multi-line status-bar tooltip for a usage snapshot.
+ *
+ * @example
+ * formatUsageTooltip({
+ *   credits: { availableMicrousd: 250000 },
+ *   summary: { requests: 202, totalTokens: 245337, estimatedCost: 0.289464 },
+ * });
+ * // => "Orvix credits and API activity\nAvailable credits: $0.25\nRequests: 202\n…"
+ *
+ * @see {@link formatUsageStatusBar}, {@link appendCreditsLines}
+ */
 export function formatUsageTooltip(snapshot: OrvixUsageSnapshot): string {
   const lines = ["Orvix credits and API activity"];
   appendCreditsLines(lines, snapshot.credits);
@@ -300,6 +475,18 @@ export interface UsageDisplayRow {
   detail?: string;
 }
 
+/**
+ * Converts a usage snapshot into quick-pick rows for the usage command.
+ *
+ * Returns an "empty" row when nothing has been observed yet, so the quick pick
+ * is never blank.
+ *
+ * @example
+ * formatUsageRows({ credits: { availableMicrousd: 250000 } });
+ * // => [{ kind: "credits", label: "Available credits: $0.25", description: "Orvix project credits" }]
+ *
+ * @see {@link UsageDisplayRow}, {@link formatUsageStatusBar}
+ */
 export function formatUsageRows(snapshot: OrvixUsageSnapshot): UsageDisplayRow[] {
   const rows = [
     ...creditsRow(snapshot.credits),

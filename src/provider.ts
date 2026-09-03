@@ -50,6 +50,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
   private readonly changeEmitter = new vscode.EventEmitter<void>();
   private readonly usageEmitter = new vscode.EventEmitter<OrvixUsageSnapshot>();
   readonly onDidChangeLanguageModelChatInformation = this.changeEmitter.event;
+  /** Fires with the full usage snapshot whenever credits or usage change. */
   readonly onDidChangeUsage = this.usageEmitter.event;
   private readonly catalogs = new Map<string, OrvixModelMetadata[]>();
   private readonly refreshedAt = new Map<string, number>();
@@ -72,6 +73,8 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     private readonly state?: vscode.Memento,
     initialUsage: Readonly<OrvixUsageSnapshot> = {},
   ) {
+    // Seed from persisted globalState so the status bar is populated before
+    // the first gateway refresh completes.
     this.usage = { ...initialUsage };
     this.metadata = new ModelsDevMetadata(state ?? new MemoryMetadataCache());
     for (const [key, catalog] of Object.entries(parseCatalogSnapshots(state?.get<unknown>(CATALOG_STATE_KEY))))
@@ -82,15 +85,30 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     this.changeEmitter.fire();
   }
 
+  /** Returns the current usage snapshot without side effects. @see {@link refreshUsage} */
   getUsageSnapshot(): OrvixUsageSnapshot {
     return this.usage;
   }
 
+  /** Resets locally tracked usage (credits and summary are re-fetched on next refresh). */
   clearUsage(): void {
     this.setAndEmitUsage({});
   }
 
-  /** Refresh credits, transactions, and the 7-day usage summary from the Orvix gateway. */
+  /**
+   * Refreshes credits, credit transactions, and the 7-day usage summary from
+   * the Orvix gateway, then returns the updated snapshot.
+   *
+   * Billing and summary failures are captured independently: a billing error
+   * sets `apiError`, while a summary failure only logs, so one broken endpoint
+   * never blanks the other.
+   *
+   * @example
+   * await provider.refreshUsage();
+   * provider.getUsageSnapshot().credits?.availableMicrousd; // e.g. 250000
+   *
+   * @see {@link getUsageSnapshot}, {@link onDidChangeUsage}
+   */
   async refreshUsage(): Promise<OrvixUsageSnapshot> {
     try {
       const apiKey = await this.requireApiKey(false, "legacy");
@@ -288,6 +306,8 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         if (result.done) break;
         resetIdleTimeout();
         for (const event of parser.push(decoder.decode(result.value, { stream: true }))) {
+          // The final streamed chunk carries the `usage` object; capture it
+          // when present so the status bar reflects the request immediately.
           reportEvent(event, progress, (usage) => this.captureRequestUsage(usage, model.rawModelId));
         }
       }
@@ -423,6 +443,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     return orvixHeaders(apiKey, accept, this.userAgent);
   }
 
+  /** Builds headers for the Orvix gateway, which uses the API key as a Bearer token. */
   private gatewayHeaders(apiKey: string, accept: string): Record<string, string> {
     return {
       Authorization: `Bearer ${apiKey}`,
@@ -449,16 +470,27 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     }
   }
 
+  /**
+   * Records one inference request's usage into the snapshot and emits it.
+   *
+   * @see {@link recordApiRequestUsage}, {@link setAndEmitUsage}
+   */
   private captureRequestUsage(raw: Record<string, unknown>, modelId: string): void {
     const next = recordApiRequestUsage(this.getUsageSnapshot(), raw, modelId);
     if (this.debugLogging) this.output.appendLine(`[usage] model=${modelId} ${JSON.stringify(raw)}`);
     this.setAndEmitUsage(next);
   }
 
+  /**
+   * Merges a partial update into the snapshot and emits the result.
+   *
+   * @see {@link mergeUsageSnapshot}, {@link setAndEmitUsage}
+   */
   private mergeAndEmitUsage(update: OrvixUsageSnapshot): void {
     this.setAndEmitUsage(mergeUsageSnapshot(this.getUsageSnapshot(), update));
   }
 
+  /** Replaces the snapshot and fires {@link onDidChangeUsage}. */
   private setAndEmitUsage(usage: OrvixUsageSnapshot): void {
     this.usage = usage;
     this.usageEmitter.fire(usage);

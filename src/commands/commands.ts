@@ -152,6 +152,19 @@ async function openUsage(): Promise<void> {
   if (!opened) vscode.window.showWarningMessage("VS Code could not open Orvix usage.");
 }
 
+/**
+ * Opens the Orvix usage and credits quick pick.
+ *
+ * The picker lists live credits, gateway summary, and locally tracked request
+ * rows, followed by actions to refresh or open the platform pages. Refreshing
+ * re-renders the picker so the new balances are visible immediately.
+ *
+ * @example
+ * // Bound to the `orvixCopilot.showUsage` command and the status bar click.
+ * await vscode.commands.executeCommand("orvixCopilot.showUsage");
+ *
+ * @see {@link formatUsageRows}, {@link toUsageQuickPickItem}
+ */
 async function showUsage(provider: OrvixProvider, usageStatus?: vscode.StatusBarItem): Promise<void> {
   const rows = formatUsageRows(provider.getUsageSnapshot()).map(toUsageQuickPickItem);
   const actions: UsageQuickPickItem[] = [
