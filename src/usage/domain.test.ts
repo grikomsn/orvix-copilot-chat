@@ -251,7 +251,7 @@ test("builds status bar, tooltip, and quick-pick rows", () => {
 
 test("handles empty snapshots in display helpers", () => {
   assert.equal(formatUsageStatusBar({}), "$(pulse) Orvix");
-  assert.equal(formatUsageStatusBar({ apiError: "boom" }), "$(warning) Orvix unavailable");
+  assert.equal(formatUsageStatusBar({ apiError: "boom" }), "$(account) Orvix sign-in");
   assert.equal(formatUsageRows({})[0].kind, "empty");
 });
 
@@ -275,10 +275,12 @@ test("degrades gracefully when the gateway is unreachable", () => {
   assert.match(formatUsageStatusBar(snapshot), /5 req/);
   assert.match(formatUsageTooltip(snapshot), /browser sign-in/);
   assert.match(formatUsageTooltip(snapshot), /Tracked session: 5 requests/);
+  assert.match(formatUsageTooltip(snapshot), /Import Usage Session/);
   const rows = formatUsageRows(snapshot);
   assert.ok(rows.some((row) => row.kind === "request" && row.label.includes("orvix/glm-5.3-flash")));
   assert.ok(rows.some((row) => row.kind === "requests" && row.label.includes("5 requests")));
   assert.ok(rows.some((row) => row.kind === "warning" && row.label.includes("Orvix usage unavailable")));
+  assert.ok(rows.some((row) => row.kind === "session" && row.label.includes("Import usage session")));
 });
 
 test("shows tracked totals on the status bar without gateway credits", () => {

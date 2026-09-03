@@ -99,6 +99,10 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
    * Refreshes credits, credit transactions, and the 7-day usage summary from
    * the Orvix gateway, then returns the updated snapshot.
    *
+   * When `promptForSession` is set, a missing gateway session triggers the
+   * **Import Usage Session** flow instead of silently degrading. Auto refreshes
+   * (e.g. on activation) keep it `false` so they degrade without interrupting.
+   *
    * Billing and summary failures are captured independently: a billing error
    * sets `apiError`, while a summary failure only logs, so one broken endpoint
    * never blanks the other.
@@ -107,10 +111,10 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
    * await provider.refreshUsage();
    * provider.getUsageSnapshot().credits?.availableMicrousd; // e.g. 250000
    *
-   * @see {@link getUsageSnapshot}, {@link onDidChangeUsage}
+   * @see {@link getUsageSnapshot}, {@link onDidChangeUsage}, {@link hasGatewaySession}
    */
-  async refreshUsage(): Promise<OrvixUsageSnapshot> {
-    const session = await this.requireGatewaySession(false);
+  async refreshUsage(promptForSession = false): Promise<OrvixUsageSnapshot> {
+    const session = await this.requireGatewaySession(promptForSession);
     if (!session) {
       // No gateway session: the API key is inferencing-only, so fall back to
       // local session tracking and explain the limitation.
@@ -169,14 +173,28 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     return this.getUsageSnapshot();
   }
 
+  /** Returns whether a gateway (usage/billing) session has been imported. */
+  async hasGatewaySession(): Promise<boolean> {
+    return Boolean(await this.auth.getGatewaySession());
+  }
+
   /** Stores a browser gateway session (imported by the user) for usage access. */
   async configureGatewaySession(session: GatewaySession): Promise<void> {
+    await this.testGatewaySession(session);
     await this.auth.storeGatewaySession(session);
-    void this.refreshUsage();
+    await this.refreshUsage();
   }
 
   async clearGatewaySession(): Promise<void> {
     await this.auth.clearGatewaySession();
+  }
+
+  /** Probes the gateway with a session token to confirm it is valid before storing. */
+  private async testGatewaySession(session: GatewaySession): Promise<void> {
+    const response = await fetch(ORVIX_GATEWAY_ENDPOINTS.billing, {
+      headers: this.gatewaySessionHeaders(session, "application/json"),
+    });
+    if (!response.ok) throw await apiError("Unable to validate Orvix usage session", response);
   }
 
   async configureApiKey(apiKey: string): Promise<string[]> {

@@ -411,7 +411,7 @@ export function formatUsageStatusBar(snapshot: OrvixUsageSnapshot): string {
   if (snapshot.tracked?.requests) {
     return `$(graph) Orvix ${snapshot.tracked.requests.toLocaleString()} req · ${formatCompactTokens(snapshot.tracked.totalTokens)} tok`;
   }
-  if (snapshot.apiError) return "$(warning) Orvix unavailable";
+  if (snapshot.apiError) return "$(account) Orvix sign-in";
   return "$(pulse) Orvix";
 }
 
@@ -433,8 +433,12 @@ export function formatUsageTooltip(snapshot: OrvixUsageSnapshot): string {
   appendSummaryLines(lines, snapshot.summary);
   appendTrackedLines(lines, snapshot);
   if (snapshot.transactions?.length) lines.push(`Recent transactions: ${snapshot.transactions.length}`);
-  if (snapshot.apiError) lines.push("Gateway usage unavailable (browser sign-in required); showing local session tracking.");
-  else if (!snapshot.credits && !snapshot.summary && !snapshot.tracked) lines.push("No live usage observed yet");
+  if (snapshot.apiError) {
+    lines.push("Gateway usage unavailable (browser sign-in required); showing local session tracking.");
+    lines.push("Run Orvix: Import Usage Session to unlock credits and spend.");
+  } else if (!snapshot.credits && !snapshot.summary && !snapshot.tracked) {
+    lines.push("No live usage observed yet");
+  }
   if (snapshot.updatedAt) lines.push(`Updated ${new Date(snapshot.updatedAt).toLocaleString()}`);
   lines.push("Click for details");
   return lines.join("\n");
@@ -473,7 +477,7 @@ function appendTrackedLines(lines: string[], snapshot: OrvixUsageSnapshot): void
 }
 
 export interface UsageDisplayRow {
-  kind: "credits" | "spend" | "request" | "requests" | "tokens" | "warning" | "empty";
+  kind: "credits" | "spend" | "request" | "requests" | "tokens" | "warning" | "session" | "empty";
   label: string;
   description: string;
   detail?: string;
@@ -484,14 +488,15 @@ export interface UsageDisplayRow {
  *
  * Locally tracked request/token rows are always shown when present. When the
  * gateway is unavailable (e.g. a 401 because the API key is inferencing-only),
- * a warning row explains the limitation and falls back to a single empty row
- * only if nothing has been observed yet, so the quick pick is never blank.
+ * a warning row explains the limitation and an explicit **Import usage session**
+ * action hints at the fix, falling back to a single empty row only if nothing
+ * has been observed yet, so the quick pick is never blank.
  *
  * @example
  * formatUsageRows({ credits: { availableMicrousd: 250000 } });
  * // => [{ kind: "credits", label: "Available credits: $0.25", description: "Orvix project credits" }]
  * formatUsageRows({ apiError: "…", tracked: { requests: 5, ... } });
- * // => [..., { kind: "warning", label: "Orvix usage unavailable", description: "…" }]
+ * // => [..., { kind: "warning", label: "Orvix usage unavailable", description: "…" }, { kind: "session", label: "Import usage session", ... }]
  *
  * @see {@link UsageDisplayRow}, {@link formatUsageStatusBar}
  */
@@ -501,6 +506,7 @@ export function formatUsageRows(snapshot: OrvixUsageSnapshot): UsageDisplayRow[]
     ...summaryRows(snapshot.summary),
     ...trackedRows(snapshot),
     ...warningRow(snapshot),
+    ...sessionRow(snapshot),
   ];
   if (rows.length) return rows;
   return [
@@ -520,6 +526,18 @@ function warningRow(snapshot: OrvixUsageSnapshot): UsageDisplayRow[] {
       kind: "warning",
       label: "Orvix usage unavailable",
       description: snapshot.apiError,
+    },
+  ];
+}
+
+/** Builds an "import a browser session" hint row when the gateway is unreachable. @see {@link formatUsageRows} */
+function sessionRow(snapshot: OrvixUsageSnapshot): UsageDisplayRow[] {
+  if (!snapshot.apiError) return [];
+  return [
+    {
+      kind: "session",
+      label: "Import usage session",
+      description: "Select to paste a browser session and unlock credits/usage",
     },
   ];
 }

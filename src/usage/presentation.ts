@@ -52,6 +52,7 @@ export function toUsageQuickPickItem(row: UsageDisplayRow): UsageQuickPickItem {
     requests: "$(request-changes)",
     tokens: "$(symbol-numeric)",
     warning: "$(warning)",
+    session: "$(account)",
     empty: "$(circle-slash)",
   }[row.kind];
   return {

@@ -240,7 +240,7 @@ async function showUsage(provider: OrvixProvider, output: vscode.OutputChannel, 
   if (picked.action === "refresh") {
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: "Refreshing Orvix credits and usage…" },
-      () => provider.refreshUsage(),
+      () => provider.refreshUsage(true),
     );
     usageStatus?.show();
     await showUsage(provider, output, usageStatus);
