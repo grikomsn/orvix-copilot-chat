@@ -25,6 +25,8 @@ This extension is a native VS Code `LanguageModelChatProvider`. It validates a p
 - Agent mode function-tool calls with complete argument validation
 - Bounded retries for pre-stream network and gateway failures only
 - Orvix Credits and usage tracking with a status-bar balance and quick-pick details
+- Import a browser session token to unlock gateway credits/usage (the API key is inferencing-only)
+- Rupiah account balance, active plans, and top-up history surfaced in the usage quick pick
 
 ## Quick start
 

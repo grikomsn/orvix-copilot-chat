@@ -3,12 +3,15 @@ import test from "node:test";
 import {
   formatCompactTokens,
   formatCreditsUsd,
+  formatIdr,
   formatUsageRows,
   formatUsageStatusBar,
   formatUsageTooltip,
   formatUsd,
   mergeUsageSnapshot,
+  parseAccountBalancePayload,
   parseBillingPayload,
+  parseTopUpsPayload,
   parseTransactionsPayload,
   parseUsageSummaryPayload,
   recordApiRequestUsage,
@@ -167,6 +170,66 @@ test("caps transactions to the given limit", () => {
   assert.equal(parseTransactionsPayload({ data: {} }), undefined);
 });
 
+test("parses account balance payload with rupiah balance and plans", () => {
+  assert.deepEqual(
+    parseAccountBalancePayload({
+      success: true,
+      data: {
+        balanceIdr: 10000,
+        plans: [
+          {
+            id: "p1",
+            planName: "Flame",
+            unitsTotal: 12000000,
+            unitsRemaining: 11693634,
+            pricePaidIdr: 40000,
+            expiresAt: null,
+            createdAt: "2026-09-01T17:12:12.520Z",
+          },
+        ],
+        transactions: [
+          { id: "t1", type: "purchase", amountIdr: -40000, balanceAfterIdr: 10000, reason: "Purchased Flame", createdAt: "2026-09-01T17:12:12.520Z" },
+        ],
+      },
+    }),
+    {
+      balanceIdr: 10000,
+      plans: [
+        { id: "p1", planName: "Flame", unitsTotal: 12000000, unitsRemaining: 11693634, pricePaidIdr: 40000, createdAt: "2026-09-01T17:12:12.520Z" },
+      ],
+      transactions: [
+        { id: "t1", type: "purchase", amountIdr: -40000, balanceAfterIdr: 10000, reason: "Purchased Flame", createdAt: "2026-09-01T17:12:12.520Z" },
+      ],
+    },
+  );
+});
+
+test("handles malformed or empty account balance payloads", () => {
+  assert.equal(parseAccountBalancePayload({ success: true, data: null }), undefined);
+  assert.equal(parseAccountBalancePayload({ data: {} }), undefined);
+  assert.equal(parseAccountBalancePayload(undefined), undefined);
+});
+
+test("parses top-ups payload and ignores non-positive entries", () => {
+  assert.deepEqual(
+    parseTopUpsPayload({
+      success: true,
+      data: [
+        { id: "tu_1", amountIdr: 50000, paymentAmount: 50001, status: "paid", createdAt: "2026-09-01T17:10:31.179Z" },
+        { id: "", amountIdr: 1, status: "pending" },
+      ],
+    }),
+    [{ id: "tu_1", amountIdr: 50000, paymentAmount: 50001, status: "paid", createdAt: "2026-09-01T17:10:31.179Z" }],
+  );
+  assert.equal(parseTopUpsPayload({ data: [] }), undefined);
+  assert.equal(parseTopUpsPayload({ data: {} }), undefined);
+});
+
+test("formats rupiah amounts", () => {
+  assert.equal(formatIdr(10000), "Rp10.000");
+  assert.equal(formatIdr(undefined), "—");
+});
+
 test("records per-request usage and accumulates tracked totals", () => {
   const raw = {
     prompt_tokens: 140,
@@ -251,6 +314,63 @@ test("builds status bar, tooltip, and quick-pick rows", () => {
 
 test("handles empty snapshots in display helpers", () => {
   assert.equal(formatUsageStatusBar({}), "$(pulse) Orvix");
-  assert.equal(formatUsageStatusBar({ apiError: "boom" }), "$(warning) Orvix unavailable");
+  assert.equal(formatUsageStatusBar({ apiError: "boom" }), "$(account) Orvix sign-in");
   assert.equal(formatUsageRows({})[0].kind, "empty");
+});
+
+test("degrades gracefully when the gateway is unreachable", () => {
+  // The gateway is authenticated by a user session JWT, not the API key, so a
+  // 401 leaves no credits/summary. Local tracking must still render.
+  const snapshot = {
+    apiError: "Orvix usage requires a browser sign-in (the API key is inferencing-only)",
+    tracked: {
+      requests: 5,
+      promptTokens: 100,
+      completionTokens: 50,
+      totalTokens: 150,
+      cachedTokens: 10,
+      reasoningTokens: 2,
+      estimatedCostUsd: 0,
+    },
+    lastRequest: { modelId: "orvix/glm-5.3-flash", recordedAt: 1000, totalTokens: 30 },
+    updatedAt: 1000,
+  };
+  assert.match(formatUsageStatusBar(snapshot), /5 req/);
+  assert.match(formatUsageTooltip(snapshot), /browser sign-in/);
+  assert.match(formatUsageTooltip(snapshot), /Tracked session: 5 requests/);
+  assert.match(formatUsageTooltip(snapshot), /Import Usage Session/);
+  const rows = formatUsageRows(snapshot);
+  assert.ok(rows.some((row) => row.kind === "request" && row.label.includes("orvix/glm-5.3-flash")));
+  assert.ok(rows.some((row) => row.kind === "requests" && row.label.includes("5 requests")));
+  assert.ok(rows.some((row) => row.kind === "warning" && row.label.includes("Orvix usage unavailable")));
+  assert.ok(rows.some((row) => row.kind === "session" && row.label.includes("Import usage session")));
+});
+
+test("shows tracked totals on the status bar without gateway credits", () => {
+  const status = formatUsageStatusBar({
+    tracked: { requests: 12, promptTokens: 0, completionTokens: 0, totalTokens: 900, cachedTokens: 0, reasoningTokens: 0, estimatedCostUsd: 0 },
+  });
+  assert.match(status, /12 req/);
+  assert.match(status, /900 tok/);
+});
+
+test("surfaces rupiah balance and active plans in status bar and rows", () => {
+  const snapshot = {
+    account: {
+      balanceIdr: 10000,
+      plans: [
+        { id: "p1", planName: "Flame", unitsTotal: 12000000, unitsRemaining: 11693634, createdAt: "2026-09-01T17:12:12.520Z" },
+      ],
+      transactions: [
+        { id: "t1", type: "topup", amountIdr: 50000, balanceAfterIdr: 50000 },
+      ],
+    },
+    updatedAt: 1000,
+  };
+  assert.match(formatUsageStatusBar(snapshot), /Rp10\.000/);
+  assert.match(formatUsageTooltip(snapshot), /Balance: Rp10\.000/);
+  assert.match(formatUsageTooltip(snapshot), /Plan Flame: 11\.7M\/12M tokens/);
+  const rows = formatUsageRows(snapshot);
+  assert.ok(rows.some((row) => row.kind === "balance" && row.label.includes("Rp10.000")));
+  assert.ok(rows.some((row) => row.kind === "plan" && row.label.includes("Flame")));
 });

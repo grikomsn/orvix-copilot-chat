@@ -11,7 +11,7 @@ import {
 /** A quick-pick entry that maps back to a usage command action. */
 export interface UsageQuickPickItem extends vscode.QuickPickItem {
   /** Action to run when the entry is picked; `undefined` for info-only rows. */
-  action?: "openUsage" | "openBilling" | "refresh";
+  action?: "openUsage" | "openBilling" | "refresh" | "session";
 }
 
 /**
@@ -51,7 +51,10 @@ export function toUsageQuickPickItem(row: UsageDisplayRow): UsageQuickPickItem {
     request: "$(history)",
     requests: "$(request-changes)",
     tokens: "$(symbol-numeric)",
+    balance: "$(credit-card)",
+    plan: "$(calendar)",
     warning: "$(warning)",
+    session: "$(account)",
     empty: "$(circle-slash)",
   }[row.kind];
   return {

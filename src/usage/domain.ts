@@ -43,6 +43,44 @@ export interface OrvixUsageTransaction {
   metadata?: Record<string, unknown>;
 }
 
+/** An active Orvix plan purchased with the IDR balance. */
+export interface OrvixPlan {
+  id: string;
+  planName: string;
+  unitsTotal?: number;
+  unitsRemaining?: number;
+  pricePaidIdr?: number;
+  expiresAt?: string;
+  createdAt?: string;
+}
+
+/** One IDR balance movement (top-up or plan purchase). */
+export interface OrvixBalanceTransaction {
+  id: string;
+  type: "purchase" | "topup" | string;
+  amountIdr?: number;
+  balanceAfterIdr?: number;
+  reason?: string;
+  createdAt?: string;
+}
+
+/** A submitted IDR top-up payment. */
+export interface OrvixTopUp {
+  id: string;
+  amountIdr?: number;
+  paymentAmount?: number;
+  status?: string;
+  expiresAt?: string;
+  createdAt?: string;
+}
+
+/** The rupiah account balance plus active plans, separate from USD credits. */
+export interface OrvixAccountBalance {
+  balanceIdr: number;
+  plans?: OrvixPlan[];
+  transactions?: OrvixBalanceTransaction[];
+}
+
 /** Token usage of the most recently recorded inference request. */
 export interface ApiRequestUsage {
   modelId: string;
@@ -74,6 +112,8 @@ export interface OrvixUsageSnapshot {
   credits?: OrvixCreditBalance;
   transactions?: OrvixUsageTransaction[];
   summary?: OrvixUsageSummary;
+  account?: OrvixAccountBalance;
+  topUps?: OrvixTopUp[];
   lastRequest?: ApiRequestUsage;
   tracked?: TrackedApiUsage;
   /** Human-readable failure message from the last gateway refresh. */
@@ -205,6 +245,96 @@ export function parseTransactionsPayload(raw: unknown, limit = 250): OrvixUsageT
 }
 
 /**
+ * Parses a `GET /balance` response into the rupiah account balance.
+ *
+ * The rupiah balance is separate from USD provider credits (`/billing`). Returns
+ * `undefined` when no `balanceIdr` is present.
+ *
+ * @example
+ * parseAccountBalancePayload({
+ *   success: true,
+ *   data: {
+ *     balanceIdr: 10000,
+ *     plans: [{ id: "p1", planName: "Flame", unitsTotal: 12000000, unitsRemaining: 11693634 }],
+ *     transactions: [{ id: "t1", type: "topup", amountIdr: 50000, balanceAfterIdr: 50000 }],
+ *   },
+ * });
+ * // => { balanceIdr: 10000, plans: [...], transactions: [...] }
+ *
+ * @see {@link OrvixAccountBalance}, {@link parseTopUpsPayload}
+ */
+export function parseAccountBalancePayload(raw: unknown): OrvixAccountBalance | undefined {
+  const root = isRecord(raw) ? raw : undefined;
+  if (!root) return undefined;
+  // Unwrap the gateway `{ success, data }` envelope; fall back to a flat payload.
+  const data = isRecord(root.data) ? root.data : root;
+  const balanceIdr = nonNegativeNumber(data.balanceIdr);
+  if (balanceIdr === undefined) return undefined;
+  const plans = Array.isArray(data.plans)
+    ? data.plans.filter(isRecord).map((plan): OrvixPlan => ({
+        id: textValue(plan.id) ?? "",
+        planName: textValue(plan.planName) ?? "Plan",
+        ...(nonNegativeNumber(plan.unitsTotal) === undefined ? {} : { unitsTotal: nonNegativeNumber(plan.unitsTotal) }),
+        ...(nonNegativeNumber(plan.unitsRemaining) === undefined ? {} : { unitsRemaining: nonNegativeNumber(plan.unitsRemaining) }),
+        ...(nonNegativeNumber(plan.pricePaidIdr) === undefined ? {} : { pricePaidIdr: nonNegativeNumber(plan.pricePaidIdr) }),
+        ...(textValue(plan.expiresAt) === undefined ? {} : { expiresAt: textValue(plan.expiresAt) }),
+        ...(textValue(plan.createdAt) === undefined ? {} : { createdAt: textValue(plan.createdAt) }),
+      }))
+      .filter((plan) => plan.id !== "")
+    : undefined;
+  const transactions = Array.isArray(data.transactions)
+    ? data.transactions.filter(isRecord).map((entry): OrvixBalanceTransaction => ({
+        id: textValue(entry.id) ?? "",
+        type: textValue(entry.type) ?? "unknown",
+        // amountIdr may be negative (a purchase spends from the balance).
+        ...(signedNumber(entry.amountIdr) === undefined ? {} : { amountIdr: signedNumber(entry.amountIdr) }),
+        ...(nonNegativeNumber(entry.balanceAfterIdr) === undefined ? {} : { balanceAfterIdr: nonNegativeNumber(entry.balanceAfterIdr) }),
+        ...(textValue(entry.reason) === undefined ? {} : { reason: textValue(entry.reason) }),
+        ...(textValue(entry.createdAt) === undefined ? {} : { createdAt: textValue(entry.createdAt) }),
+      }))
+      .filter((entry) => entry.id !== "")
+    : undefined;
+  return {
+    balanceIdr,
+    ...(plans?.length ? { plans } : {}),
+    ...(transactions?.length ? { transactions } : {}),
+  };
+}
+
+/**
+ * Parses a `GET /balance/topups` response into a list of submitted top-ups.
+ *
+ * @example
+ * parseTopUpsPayload({
+ *   success: true,
+ *   data: [{ id: "tu_1", amountIdr: 50000, status: "paid" }],
+ * });
+ * // => [{ id: "tu_1", amountIdr: 50000, status: "paid" }]
+ *
+ * @see {@link OrvixTopUp}, {@link parseAccountBalancePayload}
+ */
+export function parseTopUpsPayload(raw: unknown): OrvixTopUp[] | undefined {
+  const root = isRecord(raw) ? raw : undefined;
+  if (!root) return undefined;
+  // Unwrap the gateway `{ success, data }` envelope; `data` may be an array.
+  const data = isRecord(root.data) ? root.data : root;
+  const list = Array.isArray(data) ? data : (Array.isArray(root.data) ? root.data : undefined);
+  if (!list) return undefined;
+  const topUps = list
+    .filter(isRecord)
+    .map((entry): OrvixTopUp => ({
+      id: textValue(entry.id) ?? "",
+      ...(nonNegativeNumber(entry.amountIdr) === undefined ? {} : { amountIdr: nonNegativeNumber(entry.amountIdr) }),
+      ...(nonNegativeNumber(entry.paymentAmount) === undefined ? {} : { paymentAmount: nonNegativeNumber(entry.paymentAmount) }),
+      ...(textValue(entry.status) === undefined ? {} : { status: textValue(entry.status) }),
+      ...(textValue(entry.expiresAt) === undefined ? {} : { expiresAt: textValue(entry.expiresAt) }),
+      ...(textValue(entry.createdAt) === undefined ? {} : { createdAt: textValue(entry.createdAt) }),
+    }))
+    .filter((entry) => entry.id !== "");
+  return topUps.length ? topUps : undefined;
+}
+
+/**
  * Formats a micro-USD amount as a localized currency string.
  *
  * Orvix stores credits as micro-USD (1 credit = 1e-6 USD), so the value is
@@ -244,6 +374,20 @@ export function formatUsd(value: number | undefined): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 6,
   }).format(value);
+}
+
+/**
+ * Formats a rupiah amount without decimals, e.g. `Rp10.000`.
+ *
+ * @example
+ * formatIdr(10000); // "Rp10.000"
+ * formatIdr(undefined); // "—"
+ *
+ * @see {@link formatUsd}
+ */
+export function formatIdr(value: number | undefined): string {
+  if (value === undefined) return "—";
+  return `Rp${value.toLocaleString("id-ID")}`;
 }
 
 /**
@@ -328,6 +472,8 @@ export function mergeUsageSnapshot(
     credits: update.credits !== undefined ? { ...current.credits, ...update.credits } : current.credits,
     summary: update.summary !== undefined ? { ...current.summary, ...update.summary } : current.summary,
     transactions: update.transactions ?? current.transactions,
+    account: update.account !== undefined ? { ...current.account, ...update.account } : current.account,
+    topUps: update.topUps ?? current.topUps,
     lastRequest: update.lastRequest ?? current.lastRequest,
     tracked: update.tracked !== undefined ? { ...current.tracked, ...update.tracked } : current.tracked,
   };
@@ -391,12 +537,16 @@ export function recordApiRequestUsage(
 /**
  * Renders the status-bar text for a usage snapshot.
  *
- * Prefers the live credit balance, then tracked session spend, then falls back
- * to an availability placeholder.
+ * Prefers the live credit balance, then locally tracked session totals, then
+ * falls back to an availability placeholder. When the gateway is unreachable,
+ * the locally tracked request/token counts still render so the status bar is
+ * never blanked.
  *
  * @example
  * formatUsageStatusBar({ credits: { availableMicrousd: 250000, currency: "USD" } });
  * // => "$(credit-card) Orvix $0.25"
+ * formatUsageStatusBar({ tracked: { requests: 5, totalTokens: 150, ... } });
+ * // => "$(graph) Orvix 5 req · 150 tok"
  *
  * @see {@link formatUsageTooltip}, {@link formatUsageRows}
  */
@@ -404,10 +554,13 @@ export function formatUsageStatusBar(snapshot: OrvixUsageSnapshot): string {
   if (snapshot.credits?.availableMicrousd !== undefined) {
     return `$(credit-card) Orvix ${formatCreditsUsd(snapshot.credits.availableMicrousd, snapshot.credits.currency)}`;
   }
-  if (snapshot.tracked?.requests) {
-    return `$(graph) Orvix ${formatUsd(snapshot.tracked.estimatedCostUsd)}`;
+  if (snapshot.account?.balanceIdr !== undefined) {
+    return `$(credit-card) Orvix ${formatIdr(snapshot.account.balanceIdr)}`;
   }
-  if (snapshot.apiError) return "$(warning) Orvix unavailable";
+  if (snapshot.tracked?.requests) {
+    return `$(graph) Orvix ${snapshot.tracked.requests.toLocaleString()} req · ${formatCompactTokens(snapshot.tracked.totalTokens)} tok`;
+  }
+  if (snapshot.apiError) return "$(account) Orvix sign-in";
   return "$(pulse) Orvix";
 }
 
@@ -426,11 +579,17 @@ export function formatUsageStatusBar(snapshot: OrvixUsageSnapshot): string {
 export function formatUsageTooltip(snapshot: OrvixUsageSnapshot): string {
   const lines = ["Orvix credits and API activity"];
   appendCreditsLines(lines, snapshot.credits);
+  appendAccountLines(lines, snapshot.account);
   appendSummaryLines(lines, snapshot.summary);
   appendTrackedLines(lines, snapshot);
   if (snapshot.transactions?.length) lines.push(`Recent transactions: ${snapshot.transactions.length}`);
-  if (!snapshot.credits && !snapshot.summary && !snapshot.tracked) lines.push("No live usage observed yet");
-  if (snapshot.apiError) lines.push("Orvix usage API unavailable");
+  if (snapshot.topUps?.length) lines.push(`Top-ups: ${snapshot.topUps.length}`);
+  if (snapshot.apiError) {
+    lines.push("Gateway usage unavailable (browser sign-in required); showing local session tracking.");
+    lines.push("Run Orvix: Import Usage Session to unlock credits and spend.");
+  } else if (!snapshot.credits && !snapshot.summary && !snapshot.tracked) {
+    lines.push("No live usage observed yet");
+  }
   if (snapshot.updatedAt) lines.push(`Updated ${new Date(snapshot.updatedAt).toLocaleString()}`);
   lines.push("Click for details");
   return lines.join("\n");
@@ -443,6 +602,17 @@ function appendCreditsLines(lines: string[], credits: OrvixCreditBalance | undef
     `Available credits: ${formatCreditsUsd(availableMicrousd, currency)}`
     + (reservedMicrousd === undefined ? "" : ` (${formatCreditsUsd(reservedMicrousd, currency)} reserved)`),
   );
+}
+
+function appendAccountLines(lines: string[], account: OrvixAccountBalance | undefined): void {
+  if (!account) return;
+  lines.push(`Balance: ${formatIdr(account.balanceIdr)}`);
+  for (const plan of account.plans ?? []) {
+    const used = plan.unitsTotal !== undefined && plan.unitsRemaining !== undefined
+      ? ` · ${Math.round((plan.unitsRemaining / plan.unitsTotal) * 100)}% left`
+      : "";
+    lines.push(`Plan ${plan.planName}: ${formatCompactTokens(plan.unitsRemaining)}/${formatCompactTokens(plan.unitsTotal)} tokens${used}`);
+  }
 }
 
 function appendSummaryLines(lines: string[], summary: OrvixUsageSummary | undefined): void {
@@ -469,7 +639,7 @@ function appendTrackedLines(lines: string[], snapshot: OrvixUsageSnapshot): void
 }
 
 export interface UsageDisplayRow {
-  kind: "credits" | "spend" | "request" | "requests" | "tokens" | "warning" | "empty";
+  kind: "credits" | "spend" | "request" | "requests" | "tokens" | "balance" | "plan" | "warning" | "session" | "empty";
   label: string;
   description: string;
   detail?: string;
@@ -478,31 +648,87 @@ export interface UsageDisplayRow {
 /**
  * Converts a usage snapshot into quick-pick rows for the usage command.
  *
- * Returns an "empty" row when nothing has been observed yet, so the quick pick
- * is never blank.
+ * Locally tracked request/token rows are always shown when present. When the
+ * gateway is unavailable (e.g. a 401 because the API key is inferencing-only),
+ * a warning row explains the limitation and an explicit **Import usage session**
+ * action hints at the fix, falling back to a single empty row only if nothing
+ * has been observed yet, so the quick pick is never blank.
  *
  * @example
  * formatUsageRows({ credits: { availableMicrousd: 250000 } });
  * // => [{ kind: "credits", label: "Available credits: $0.25", description: "Orvix project credits" }]
+ * formatUsageRows({ account: { balanceIdr: 10000, plans: [{ planName: "Flame", ... }] } });
+ * // => [{ kind: "balance", label: "Balance: Rp10.000", ... }, { kind: "plan", label: "Plan Flame: 11.7M/12M tokens", ... }]
  *
  * @see {@link UsageDisplayRow}, {@link formatUsageStatusBar}
  */
 export function formatUsageRows(snapshot: OrvixUsageSnapshot): UsageDisplayRow[] {
   const rows = [
     ...creditsRow(snapshot.credits),
+    ...accountRows(snapshot.account),
     ...summaryRows(snapshot.summary),
     ...trackedRows(snapshot),
+    ...warningRow(snapshot),
+    ...sessionRow(snapshot),
   ];
   if (rows.length) return rows;
   return [
     {
       kind: "empty",
-      label: snapshot.apiError ? "Orvix usage unavailable" : "No live usage observed yet",
-      description: snapshot.apiError ?? "Send a request or refresh to load credits",
+      label: "No live usage observed yet",
+      description: "Send a request or refresh to load credits",
     },
   ];
 }
 
+/** Builds the gateway-unavailable warning row, if any. @see {@link formatUsageRows} */
+function warningRow(snapshot: OrvixUsageSnapshot): UsageDisplayRow[] {
+  if (!snapshot.apiError) return [];
+  return [
+    {
+      kind: "warning",
+      label: "Orvix usage unavailable",
+      description: snapshot.apiError,
+    },
+  ];
+}
+
+/** Builds an "import a browser session" hint row when the gateway is unreachable. @see {@link formatUsageRows} */
+function sessionRow(snapshot: OrvixUsageSnapshot): UsageDisplayRow[] {
+  if (!snapshot.apiError) return [];
+  return [
+    {
+      kind: "session",
+      label: "Import usage session",
+      description: "Select to paste a browser session and unlock credits/usage",
+    },
+  ];
+}
+
+/** Builds rupiah balance and active-plan rows, if any. @see {@link formatUsageRows} */
+function accountRows(account: OrvixAccountBalance | undefined): UsageDisplayRow[] {
+  if (!account) return [];
+  const rows: UsageDisplayRow[] = [
+    {
+      kind: "balance",
+      label: `Balance: ${formatIdr(account.balanceIdr)}`,
+      description: "IDR account balance (separate from USD credits)",
+    },
+  ];
+  for (const plan of account.plans ?? []) {
+    const tokens = plan.unitsTotal !== undefined
+      ? `${formatCompactTokens(plan.unitsRemaining)}/${formatCompactTokens(plan.unitsTotal)} tokens`
+      : `${formatCompactTokens(plan.unitsRemaining)} tokens`;
+    rows.push({
+      kind: "plan",
+      label: `Plan ${plan.planName}: ${tokens}`,
+      description: plan.expiresAt ? `Expires ${new Date(plan.expiresAt).toLocaleDateString()}` : "Active plan",
+    });
+  }
+  return rows;
+}
+
+/** Builds the USD credit-balance quick-pick row, if any. @see {@link formatUsageRows} */
 function creditsRow(credits: OrvixCreditBalance | undefined): UsageDisplayRow[] {
   if (!credits) return [];
   const { availableMicrousd, reservedMicrousd, currency } = credits;
@@ -562,6 +788,12 @@ function finiteNumber(value: unknown): number | undefined {
 
 function nonNegativeNumber(value: unknown): number | undefined {
   return finiteNumber(value);
+}
+
+/** Like {@link finiteNumber} but allows negative values (e.g. balance spends). */
+function signedNumber(value: unknown): number | undefined {
+  const parsed = typeof value === "string" ? Number(value) : value;
+  return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function textValue(value: unknown): string | undefined {
