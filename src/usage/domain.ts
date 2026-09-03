@@ -1,14 +1,281 @@
-export interface ProviderUsagePayload {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  total_tokens?: number;
-  prompt_tokens_details?: { cached_tokens: number };
-  completion_tokens_details?: { reasoning_tokens: number };
+/** Orvix credits and request usage normalization for VS Code. */
+
+/** A project's live Orvix credit balance, in micro-USD (1 credit = 1e-6 USD). */
+export interface OrvixCreditBalance {
+  /** Orvix project identifier. */
+  projectId?: string;
+  /** Display name of the project that owns the balance. */
+  projectName?: string;
+  /** ISO 4217 currency code; Orvix credits are denominated in `USD`. */
+  currency?: string;
+  /** Spendable balance in micro-USD. */
+  availableMicrousd?: number;
+  /** Balance already reserved for in-flight reservations in micro-USD. */
+  reservedMicrousd?: number;
+  /** Project billing status, e.g. `active`. */
+  status?: string;
+  /** ISO timestamp of the last balance update. */
+  updatedAt?: string;
 }
 
+/** Aggregated Orvix gateway usage over a rolling window (default 7 days). */
+export interface OrvixUsageSummary {
+  requests?: number;
+  errors?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cachedPromptTokens?: number;
+  /** Estimated project spend in USD, covering both credits and BYOK. */
+  estimatedCost?: number;
+  /** USD value actually charged against Orvix credits. */
+  chargedCredits?: number;
+  avgLatencyMs?: number;
+}
+
+/** One immutable credit transaction (reservation, settlement, grant, …). */
+export interface OrvixUsageTransaction {
+  id: string;
+  type: string;
+  amountMicrousd?: number;
+  reason?: string;
+  createdAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** Token usage of the most recently recorded inference request. */
+export interface ApiRequestUsage {
+  modelId: string;
+  recordedAt: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cachedTokens?: number;
+  reasoningTokens?: number;
+}
+
+/**
+ * Running totals accumulated by {@link recordApiRequestUsage} for the current
+ * VS Code session.
+ */
+export interface TrackedApiUsage {
+  requests: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedTokens: number;
+  reasoningTokens: number;
+  /** Placeholder that stays `0` until Orvix exposes per-request cost. */
+  estimatedCostUsd: number;
+}
+
+/** Persisted usage state shown by the status bar and the usage quick pick. */
+export interface OrvixUsageSnapshot {
+  credits?: OrvixCreditBalance;
+  transactions?: OrvixUsageTransaction[];
+  summary?: OrvixUsageSummary;
+  lastRequest?: ApiRequestUsage;
+  tracked?: TrackedApiUsage;
+  /** Human-readable failure message from the last gateway refresh. */
+  apiError?: string;
+  updatedAt?: number;
+}
+
+/**
+ * Parses a `GET /billing` response into a project credit balance.
+ *
+ * Accepts either the gateway envelope (`{ success, data: {...} }`) or a flat
+ * payload, and drops entries that carry no usable fields.
+ *
+ * @example
+ * parseBillingPayload({
+ *   success: true,
+ *   data: { currency: "USD", availableMicrousd: 250000, reservedMicrousd: 0 },
+ * });
+ * // => { availableMicrousd: 250000, reservedMicrousd: 0, currency: "USD" }
+ *
+ * @see {@link OrvixCreditBalance}
+ */
+export function parseBillingPayload(raw: unknown): OrvixCreditBalance | undefined {
+  const root = isRecord(raw) ? raw : undefined;
+  if (!root) return undefined;
+  // Unwrap the gateway `{ success, data }` envelope; fall back to a flat payload.
+  const data = isRecord(root.data) ? root.data : root;
+  const result: OrvixCreditBalance = {
+    availableMicrousd: nonNegativeNumber(data.availableMicrousd),
+    reservedMicrousd: nonNegativeNumber(data.reservedMicrousd),
+  };
+  const projectId = textValue(data.projectId);
+  const projectName = textValue(data.projectName);
+  const currency = textValue(data.currency);
+  const status = textValue(data.status);
+  const updatedAt = textValue(data.updatedAt);
+  if (projectId) result.projectId = projectId;
+  if (projectName) result.projectName = projectName;
+  if (currency) result.currency = currency;
+  if (status) result.status = status;
+  if (updatedAt) result.updatedAt = updatedAt;
+  // A payload with no recognized field is treated as absent so callers can
+  // distinguish "no balance" from a malformed response.
+  const hasValue = result.availableMicrousd !== undefined
+    || result.reservedMicrousd !== undefined
+    || projectId !== undefined
+    || projectName !== undefined
+    || currency !== undefined
+    || status !== undefined
+    || updatedAt !== undefined;
+  return hasValue ? result : undefined;
+}
+
+/**
+ * Parses a `GET /usage/summary` response into a rolling usage summary.
+ *
+ * Unknown or non-numeric fields are ignored, so new gateway fields do not
+ * break older versions of the extension.
+ *
+ * @example
+ * parseUsageSummaryPayload({
+ *   success: true,
+ *   data: { requests: 202, totalTokens: 245337, estimatedCost: 0.289464 },
+ * });
+ * // => { requests: 202, totalTokens: 245337, estimatedCost: 0.289464 }
+ *
+ * @see {@link OrvixUsageSummary}
+ */
+export function parseUsageSummaryPayload(raw: unknown): OrvixUsageSummary | undefined {
+  const root = isRecord(raw) ? raw : undefined;
+  if (!root) return undefined;
+  // Unwrap the gateway `{ success, data }` envelope; fall back to a flat payload.
+  const data = isRecord(root.data) ? root.data : root;
+  const result: OrvixUsageSummary = {};
+  for (const key of [
+    "requests",
+    "errors",
+    "promptTokens",
+    "completionTokens",
+    "totalTokens",
+    "cachedPromptTokens",
+    "estimatedCost",
+    "chargedCredits",
+    "avgLatencyMs",
+  ] as const) {
+    const value = nonNegativeNumber(data[key]);
+    if (value !== undefined) result[key] = value;
+  }
+  return Object.keys(result).length ? result : undefined;
+}
+
+/**
+ * Parses a `GET /billing/transactions` response into a bounded credit history.
+ *
+ * Entries without an id, and payloads without a `transactions` array, are
+ * dropped. The list is capped at `limit` (default 250) to keep the persisted
+ * snapshot small.
+ *
+ * @example
+ * parseTransactionsPayload({
+ *   success: true,
+ *   data: { transactions: [{ id: "txn_1", type: "promo credit", amountMicrousd: 500000 }] },
+ * });
+ * // => [{ id: "txn_1", type: "promo credit", amountMicrousd: 500000 }]
+ *
+ * @see {@link OrvixUsageTransaction}
+ */
+export function parseTransactionsPayload(raw: unknown, limit = 250): OrvixUsageTransaction[] | undefined {
+  const root = isRecord(raw) ? raw : undefined;
+  if (!root) return undefined;
+  // Unwrap the gateway `{ success, data }` envelope; fall back to a flat payload.
+  const data = isRecord(root.data) ? root.data : root;
+  if (!Array.isArray(data.transactions)) return undefined;
+  const transactions = data.transactions
+    .filter(isRecord)
+    .map((entry): OrvixUsageTransaction => ({
+      id: textValue(entry.id) ?? "",
+      type: textValue(entry.type) ?? "unknown",
+      ...(nonNegativeNumber(entry.amountMicrousd) === undefined
+        ? {}
+        : { amountMicrousd: nonNegativeNumber(entry.amountMicrousd) }),
+      ...(textValue(entry.reason) === undefined ? {} : { reason: textValue(entry.reason) }),
+      ...(textValue(entry.createdAt) === undefined ? {} : { createdAt: textValue(entry.createdAt) }),
+      ...(isRecord(entry.metadata) ? { metadata: entry.metadata } : {}),
+    }))
+    .filter((entry) => entry.id !== "")
+    .slice(0, Math.max(1, limit));
+  return transactions.length ? transactions : undefined;
+}
+
+/**
+ * Formats a micro-USD amount as a localized currency string.
+ *
+ * Orvix stores credits as micro-USD (1 credit = 1e-6 USD), so the value is
+ * divided by 1,000,000 before formatting.
+ *
+ * @example
+ * formatCreditsUsd(250000); // "$0.25"
+ * formatCreditsUsd(undefined); // "—"
+ *
+ * @see {@link formatUsd}
+ */
+export function formatCreditsUsd(microusd: number | undefined, currency = "USD"): string {
+  if (microusd === undefined) return "—";
+  const value = microusd / 1_000_000;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(value);
+}
+
+/**
+ * Formats a USD amount from the usage summary as a localized currency string.
+ *
+ * @example
+ * formatUsd(0.289464); // "$0.289464"
+ * formatUsd(undefined); // "—"
+ *
+ * @see {@link formatCreditsUsd}
+ */
+export function formatUsd(value: number | undefined): string {
+  if (value === undefined) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(value);
+}
+
+/**
+ * Formats a token count using compact notation (e.g. `245.3K`).
+ *
+ * @example
+ * formatCompactTokens(245337); // "245.3K"
+ * formatCompactTokens(undefined); // "—"
+ */
+export function formatCompactTokens(value: number | undefined): string {
+  if (value === undefined) return "—";
+  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+/**
+ * Normalizes an OpenAI-compatible usage object into the shape VS Code expects
+ * from a `LanguageModelChatProvider` response.
+ *
+ * Accepts both `prompt_tokens`/`completion_tokens` and the Responses API
+ * `input_tokens`/`output_tokens` names, and derives `total_tokens` when the
+ * upstream omits it.
+ *
+ * @example
+ * toProviderUsagePayload({ input_tokens: 8, output_tokens: 3 });
+ * // => { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 }
+ *
+ * @see {@link ProviderUsagePayload}
+ */
 export function toProviderUsagePayload(raw: Record<string, unknown>): ProviderUsagePayload {
   const promptTokens = finiteNumber(raw.prompt_tokens ?? raw.input_tokens);
   const completionTokens = finiteNumber(raw.completion_tokens ?? raw.output_tokens);
+  // Derive a total only when both sides are known; otherwise leave it absent.
   const totalTokens =
     finiteNumber(raw.total_tokens) ??
     (promptTokens !== undefined && completionTokens !== undefined ? promptTokens + completionTokens : undefined);
@@ -27,9 +294,278 @@ export function toProviderUsagePayload(raw: Record<string, unknown>): ProviderUs
   };
 }
 
+export interface ProviderUsagePayload {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  prompt_tokens_details?: { cached_tokens: number };
+  completion_tokens_details?: { reasoning_tokens: number };
+}
+
+/**
+ * Merges a partial usage update into the current snapshot.
+ *
+ * Nested objects (`credits`, `summary`, `tracked`) are shallow-merged so a
+ * refresh of one field never discards another; arrays and scalars are replaced
+ * when the update provides them.
+ *
+ * @example
+ * mergeUsageSnapshot(
+ *   { credits: { availableMicrousd: 1000 } },
+ *   { credits: { reservedMicrousd: 5 }, summary: { requests: 10 } },
+ * );
+ * // => { credits: { availableMicrousd: 1000, reservedMicrousd: 5 }, summary: { requests: 10 } }
+ *
+ * @see {@link OrvixUsageSnapshot}, {@link recordApiRequestUsage}
+ */
+export function mergeUsageSnapshot(
+  current: OrvixUsageSnapshot,
+  update: OrvixUsageSnapshot,
+): OrvixUsageSnapshot {
+  return {
+    ...current,
+    ...update,
+    credits: update.credits !== undefined ? { ...current.credits, ...update.credits } : current.credits,
+    summary: update.summary !== undefined ? { ...current.summary, ...update.summary } : current.summary,
+    transactions: update.transactions ?? current.transactions,
+    lastRequest: update.lastRequest ?? current.lastRequest,
+    tracked: update.tracked !== undefined ? { ...current.tracked, ...update.tracked } : current.tracked,
+  };
+}
+
+/**
+ * Records one inference request into the snapshot and returns a new snapshot.
+ *
+ * Normalizes the raw OpenAI-compatible usage, stores it as `lastRequest`, and
+ * accumulates the deltas into `tracked`. The snapshot is immutable: the input
+ * is never mutated.
+ *
+ * @example
+ * recordApiRequestUsage(
+ *   {},
+ *   { prompt_tokens: 140, completion_tokens: 2, total_tokens: 142 },
+ *   "orvix/glm-5.3-flash",
+ *   1000,
+ * );
+ * // => { lastRequest: { modelId: "orvix/glm-5.3-flash", recordedAt: 1000, ... },
+ * //      tracked: { requests: 1, promptTokens: 140, completionTokens: 2, totalTokens: 142, ... },
+ * //      updatedAt: 1000 }
+ *
+ * @see {@link toProviderUsagePayload}, {@link mergeUsageSnapshot}, {@link ApiRequestUsage}
+ */
+export function recordApiRequestUsage(
+  current: OrvixUsageSnapshot,
+  raw: Record<string, unknown>,
+  modelId: string,
+  recordedAt = Date.now(),
+): OrvixUsageSnapshot {
+  const usage = toProviderUsagePayload(raw);
+  const promptTokens = usage.prompt_tokens;
+  const completionTokens = usage.completion_tokens;
+  const totalTokens = usage.total_tokens;
+  const cachedTokens = usage.prompt_tokens_details?.cached_tokens;
+  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens;
+  const lastRequest: ApiRequestUsage = {
+    modelId,
+    recordedAt,
+    ...(promptTokens === undefined ? {} : { promptTokens }),
+    ...(completionTokens === undefined ? {} : { completionTokens }),
+    ...(totalTokens === undefined ? {} : { totalTokens }),
+    ...(cachedTokens === undefined ? {} : { cachedTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+  };
+  const previous = current.tracked;
+  // Accumulate each request's tokens onto the previous session totals.
+  const tracked: TrackedApiUsage = {
+    requests: (previous?.requests ?? 0) + 1,
+    promptTokens: (previous?.promptTokens ?? 0) + (promptTokens ?? 0),
+    completionTokens: (previous?.completionTokens ?? 0) + (completionTokens ?? 0),
+    totalTokens: (previous?.totalTokens ?? 0) + (totalTokens ?? 0),
+    cachedTokens: (previous?.cachedTokens ?? 0) + (cachedTokens ?? 0),
+    reasoningTokens: (previous?.reasoningTokens ?? 0) + (reasoningTokens ?? 0),
+    estimatedCostUsd: 0,
+  };
+  return mergeUsageSnapshot(current, { lastRequest, tracked, updatedAt: recordedAt });
+}
+
+/**
+ * Renders the status-bar text for a usage snapshot.
+ *
+ * Prefers the live credit balance, then tracked session spend, then falls back
+ * to an availability placeholder.
+ *
+ * @example
+ * formatUsageStatusBar({ credits: { availableMicrousd: 250000, currency: "USD" } });
+ * // => "$(credit-card) Orvix $0.25"
+ *
+ * @see {@link formatUsageTooltip}, {@link formatUsageRows}
+ */
+export function formatUsageStatusBar(snapshot: OrvixUsageSnapshot): string {
+  if (snapshot.credits?.availableMicrousd !== undefined) {
+    return `$(credit-card) Orvix ${formatCreditsUsd(snapshot.credits.availableMicrousd, snapshot.credits.currency)}`;
+  }
+  if (snapshot.tracked?.requests) {
+    return `$(graph) Orvix ${formatUsd(snapshot.tracked.estimatedCostUsd)}`;
+  }
+  if (snapshot.apiError) return "$(warning) Orvix unavailable";
+  return "$(pulse) Orvix";
+}
+
+/**
+ * Builds the multi-line status-bar tooltip for a usage snapshot.
+ *
+ * @example
+ * formatUsageTooltip({
+ *   credits: { availableMicrousd: 250000 },
+ *   summary: { requests: 202, totalTokens: 245337, estimatedCost: 0.289464 },
+ * });
+ * // => "Orvix credits and API activity\nAvailable credits: $0.25\nRequests: 202\n…"
+ *
+ * @see {@link formatUsageStatusBar}, {@link appendCreditsLines}
+ */
+export function formatUsageTooltip(snapshot: OrvixUsageSnapshot): string {
+  const lines = ["Orvix credits and API activity"];
+  appendCreditsLines(lines, snapshot.credits);
+  appendSummaryLines(lines, snapshot.summary);
+  appendTrackedLines(lines, snapshot);
+  if (snapshot.transactions?.length) lines.push(`Recent transactions: ${snapshot.transactions.length}`);
+  if (!snapshot.credits && !snapshot.summary && !snapshot.tracked) lines.push("No live usage observed yet");
+  if (snapshot.apiError) lines.push("Orvix usage API unavailable");
+  if (snapshot.updatedAt) lines.push(`Updated ${new Date(snapshot.updatedAt).toLocaleString()}`);
+  lines.push("Click for details");
+  return lines.join("\n");
+}
+
+function appendCreditsLines(lines: string[], credits: OrvixCreditBalance | undefined): void {
+  if (!credits) return;
+  const { availableMicrousd, reservedMicrousd, currency } = credits;
+  lines.push(
+    `Available credits: ${formatCreditsUsd(availableMicrousd, currency)}`
+    + (reservedMicrousd === undefined ? "" : ` (${formatCreditsUsd(reservedMicrousd, currency)} reserved)`),
+  );
+}
+
+function appendSummaryLines(lines: string[], summary: OrvixUsageSummary | undefined): void {
+  if (!summary) return;
+  const { requests, totalTokens, estimatedCost, chargedCredits } = summary;
+  if (requests !== undefined) lines.push(`Requests: ${requests.toLocaleString()}`);
+  if (totalTokens !== undefined) lines.push(`Tokens: ${formatCompactTokens(totalTokens)}`);
+  if (estimatedCost !== undefined) lines.push(`Estimated spend: ${formatUsd(estimatedCost)}`);
+  if (chargedCredits !== undefined) lines.push(`Charged credits: ${formatUsd(chargedCredits)}`);
+}
+
+function appendTrackedLines(lines: string[], snapshot: OrvixUsageSnapshot): void {
+  if (snapshot.tracked) {
+    lines.push(
+      `Tracked session: ${snapshot.tracked.requests.toLocaleString()} requests · `
+      + `${formatCompactTokens(snapshot.tracked.totalTokens)} tokens`,
+    );
+  }
+  if (snapshot.lastRequest) {
+    lines.push(
+      `Last request: ${snapshot.lastRequest.modelId} · ${formatCompactTokens(snapshot.lastRequest.totalTokens)} tokens`,
+    );
+  }
+}
+
+export interface UsageDisplayRow {
+  kind: "credits" | "spend" | "request" | "requests" | "tokens" | "warning" | "empty";
+  label: string;
+  description: string;
+  detail?: string;
+}
+
+/**
+ * Converts a usage snapshot into quick-pick rows for the usage command.
+ *
+ * Returns an "empty" row when nothing has been observed yet, so the quick pick
+ * is never blank.
+ *
+ * @example
+ * formatUsageRows({ credits: { availableMicrousd: 250000 } });
+ * // => [{ kind: "credits", label: "Available credits: $0.25", description: "Orvix project credits" }]
+ *
+ * @see {@link UsageDisplayRow}, {@link formatUsageStatusBar}
+ */
+export function formatUsageRows(snapshot: OrvixUsageSnapshot): UsageDisplayRow[] {
+  const rows = [
+    ...creditsRow(snapshot.credits),
+    ...summaryRows(snapshot.summary),
+    ...trackedRows(snapshot),
+  ];
+  if (rows.length) return rows;
+  return [
+    {
+      kind: "empty",
+      label: snapshot.apiError ? "Orvix usage unavailable" : "No live usage observed yet",
+      description: snapshot.apiError ?? "Send a request or refresh to load credits",
+    },
+  ];
+}
+
+function creditsRow(credits: OrvixCreditBalance | undefined): UsageDisplayRow[] {
+  if (!credits) return [];
+  const { availableMicrousd, reservedMicrousd, currency } = credits;
+  return [
+    {
+      kind: "credits",
+      label: `Available credits: ${formatCreditsUsd(availableMicrousd, currency)}`,
+      description: reservedMicrousd === undefined ? "Orvix project credits" : `${formatCreditsUsd(reservedMicrousd, currency)} reserved`,
+    },
+  ];
+}
+
+function summaryRows(summary: OrvixUsageSummary | undefined): UsageDisplayRow[] {
+  if (!summary) return [];
+  const { requests, totalTokens, estimatedCost } = summary;
+  return [
+    {
+      kind: "requests",
+      label: `Requests: ${(requests ?? 0).toLocaleString()}`,
+      description: "Across all API keys (last 7 days)",
+    },
+    {
+      kind: "tokens",
+      label: `Tokens: ${formatCompactTokens(totalTokens)}`,
+      description: "Prompt and completion tokens",
+    },
+    {
+      kind: "spend",
+      label: `Estimated spend: ${formatUsd(estimatedCost)}`,
+      description: "Charged against credits or BYOK",
+    },
+  ];
+}
+
+function trackedRows(snapshot: OrvixUsageSnapshot): UsageDisplayRow[] {
+  if (!snapshot.tracked) return [];
+  return [
+    {
+      kind: "request",
+      label: `Last request: ${snapshot.lastRequest?.modelId ?? "unknown"}`,
+      description: snapshot.lastRequest
+        ? `${formatCompactTokens(snapshot.lastRequest.totalTokens)} tokens · ${new Date(snapshot.lastRequest.recordedAt).toLocaleString()}`
+        : "",
+    },
+    {
+      kind: "requests",
+      label: `Tracked session: ${snapshot.tracked.requests.toLocaleString()} requests`,
+      description: `${formatCompactTokens(snapshot.tracked.totalTokens)} tokens since VS Code started`,
+    },
+  ];
+}
+
 function finiteNumber(value: unknown): number | undefined {
   const parsed = typeof value === "string" ? Number(value) : value;
   return typeof parsed === "number" && Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function nonNegativeNumber(value: unknown): number | undefined {
+  return finiteNumber(value);
+}
+
+function textValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -21,7 +21,7 @@ import {
 import { parseCatalogSnapshots } from "./models/cache";
 import { ModelsDevMetadata, resolveModelsDevMetadata } from "./models/metadata";
 import { ChatCompletionStreamParser, validateStreamCompletion } from "./transport/sse";
-import { ORVIX_ENDPOINTS, orvixHeaders } from "./transport/protocol";
+import { ORVIX_ENDPOINTS, ORVIX_GATEWAY_ENDPOINTS, orvixHeaders } from "./transport/protocol";
 import { apiError } from "./transport/errors";
 import { modelFamily } from "./models/family";
 import { apiKeyFromConfiguration, credentialRefForApiKey, qualifiedModelId } from "./provider-profile";
@@ -29,6 +29,14 @@ import { isTransientNetworkError, isTransientServerError, retryDelayMs } from ".
 import { messageToText } from "./provider/messages";
 import { buildRequest } from "./provider/request";
 import { reportEvent } from "./provider/response";
+import {
+  mergeUsageSnapshot,
+  parseBillingPayload,
+  parseTransactionsPayload,
+  parseUsageSummaryPayload,
+  recordApiRequestUsage,
+  type OrvixUsageSnapshot,
+} from "./usage/domain";
 
 export { API_BASE } from "./transport/protocol";
 
@@ -40,10 +48,14 @@ export interface OrvixModel extends vscode.LanguageModelChatInformation {
 
 export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixModel> {
   private readonly changeEmitter = new vscode.EventEmitter<void>();
+  private readonly usageEmitter = new vscode.EventEmitter<OrvixUsageSnapshot>();
   readonly onDidChangeLanguageModelChatInformation = this.changeEmitter.event;
+  /** Fires with the full usage snapshot whenever credits or usage change. */
+  readonly onDidChangeUsage = this.usageEmitter.event;
   private readonly catalogs = new Map<string, OrvixModelMetadata[]>();
   private readonly refreshedAt = new Map<string, number>();
   private readonly apiKeys = new Map<string, string>();
+  private usage: OrvixUsageSnapshot = {};
   private readonly metadata: ModelsDevMetadata;
 
   private get configuration(): vscode.WorkspaceConfiguration {
@@ -59,7 +71,11 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     private readonly output: vscode.OutputChannel,
     private readonly userAgent: string,
     private readonly state?: vscode.Memento,
+    initialUsage: Readonly<OrvixUsageSnapshot> = {},
   ) {
+    // Seed from persisted globalState so the status bar is populated before
+    // the first gateway refresh completes.
+    this.usage = { ...initialUsage };
     this.metadata = new ModelsDevMetadata(state ?? new MemoryMetadataCache());
     for (const [key, catalog] of Object.entries(parseCatalogSnapshots(state?.get<unknown>(CATALOG_STATE_KEY))))
       this.catalogs.set(key, catalog);
@@ -67,6 +83,74 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
 
   fireDidChange(): void {
     this.changeEmitter.fire();
+  }
+
+  /** Returns the current usage snapshot without side effects. @see {@link refreshUsage} */
+  getUsageSnapshot(): OrvixUsageSnapshot {
+    return this.usage;
+  }
+
+  /** Resets locally tracked usage (credits and summary are re-fetched on next refresh). */
+  clearUsage(): void {
+    this.setAndEmitUsage({});
+  }
+
+  /**
+   * Refreshes credits, credit transactions, and the 7-day usage summary from
+   * the Orvix gateway, then returns the updated snapshot.
+   *
+   * Billing and summary failures are captured independently: a billing error
+   * sets `apiError`, while a summary failure only logs, so one broken endpoint
+   * never blanks the other.
+   *
+   * @example
+   * await provider.refreshUsage();
+   * provider.getUsageSnapshot().credits?.availableMicrousd; // e.g. 250000
+   *
+   * @see {@link getUsageSnapshot}, {@link onDidChangeUsage}
+   */
+  async refreshUsage(): Promise<OrvixUsageSnapshot> {
+    try {
+      const apiKey = await this.requireApiKey(false, "legacy");
+      const billingResponse = await fetch(ORVIX_GATEWAY_ENDPOINTS.billing, {
+        headers: this.gatewayHeaders(apiKey, "application/json"),
+      });
+      if (!billingResponse.ok) throw await apiError("Unable to read Orvix billing", billingResponse);
+      const billing = parseBillingPayload(await billingResponse.json());
+      this.mergeAndEmitUsage({ credits: billing, apiError: undefined, updatedAt: Date.now() });
+
+      let transactions;
+      try {
+        const transactionResponse = await fetch(
+          `${ORVIX_GATEWAY_ENDPOINTS.transactions}?limit=50&offset=0`,
+          { headers: this.gatewayHeaders(apiKey, "application/json") },
+        );
+        if (!transactionResponse.ok)
+          throw await apiError("Unable to read Orvix credit transactions", transactionResponse);
+        transactions = parseTransactionsPayload(await transactionResponse.json());
+      } catch (error) {
+        this.output.appendLine(`[usage] transaction refresh unavailable: ${messageOf(error)}`);
+      }
+      this.mergeAndEmitUsage({ transactions, updatedAt: Date.now() });
+    } catch (error) {
+      const message = messageOf(error);
+      this.output.appendLine(`[usage] Orvix credits refresh unavailable: ${message}`);
+      this.mergeAndEmitUsage({ apiError: message, updatedAt: Date.now() });
+    }
+
+    try {
+      const apiKey = await this.requireApiKey(false, "legacy");
+      const summaryResponse = await fetch(`${ORVIX_GATEWAY_ENDPOINTS.usageSummary}?range=7d`, {
+        headers: this.gatewayHeaders(apiKey, "application/json"),
+      });
+      if (!summaryResponse.ok) throw await apiError("Unable to read Orvix usage summary", summaryResponse);
+      const summary = parseUsageSummaryPayload(await summaryResponse.json());
+      this.mergeAndEmitUsage({ summary, updatedAt: Date.now() });
+    } catch (error) {
+      this.output.appendLine(`[usage] Orvix usage summary refresh unavailable: ${messageOf(error)}`);
+    }
+
+    return this.getUsageSnapshot();
   }
 
   async configureApiKey(apiKey: string): Promise<string[]> {
@@ -222,11 +306,13 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         if (result.done) break;
         resetIdleTimeout();
         for (const event of parser.push(decoder.decode(result.value, { stream: true }))) {
-          reportEvent(event, progress, (usage) => this.logUsage(model.rawModelId, usage));
+          // The final streamed chunk carries the `usage` object; capture it
+          // when present so the status bar reflects the request immediately.
+          reportEvent(event, progress, (usage) => this.captureRequestUsage(usage, model.rawModelId));
         }
       }
       for (const event of parser.finish())
-        reportEvent(event, progress, (usage) => this.logUsage(model.rawModelId, usage));
+        reportEvent(event, progress, (usage) => this.captureRequestUsage(usage, model.rawModelId));
       validateStreamCompletion(parser.finishReason);
     } catch (error) {
       if (token.isCancellationRequested) return;
@@ -285,7 +371,9 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     if (!response.ok) throw await apiError("Orvix connection test failed", response);
     const responseBody = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: Record<string, unknown>;
     };
+    if (responseBody.usage) this.captureRequestUsage(responseBody.usage, model);
     return {
       model,
       ...(reasoningEffort ? { reasoningEffort } : {}),
@@ -355,6 +443,15 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     return orvixHeaders(apiKey, accept, this.userAgent);
   }
 
+  /** Builds headers for the Orvix gateway, which uses the API key as a Bearer token. */
+  private gatewayHeaders(apiKey: string, accept: string): Record<string, string> {
+    return {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: accept,
+      "User-Agent": this.userAgent,
+    };
+  }
+
   private async fetchInference(init: RequestInit): Promise<Response> {
     for (let attempt = 0; ; attempt += 1) {
       try {
@@ -373,8 +470,30 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     }
   }
 
-  private logUsage(modelId: string, usage: Record<string, unknown>): void {
-    if (this.debugLogging) this.output.appendLine(`[usage] model=${modelId} ${JSON.stringify(usage)}`);
+  /**
+   * Records one inference request's usage into the snapshot and emits it.
+   *
+   * @see {@link recordApiRequestUsage}, {@link setAndEmitUsage}
+   */
+  private captureRequestUsage(raw: Record<string, unknown>, modelId: string): void {
+    const next = recordApiRequestUsage(this.getUsageSnapshot(), raw, modelId);
+    if (this.debugLogging) this.output.appendLine(`[usage] model=${modelId} ${JSON.stringify(raw)}`);
+    this.setAndEmitUsage(next);
+  }
+
+  /**
+   * Merges a partial update into the snapshot and emits the result.
+   *
+   * @see {@link mergeUsageSnapshot}, {@link setAndEmitUsage}
+   */
+  private mergeAndEmitUsage(update: OrvixUsageSnapshot): void {
+    this.setAndEmitUsage(mergeUsageSnapshot(this.getUsageSnapshot(), update));
+  }
+
+  /** Replaces the snapshot and fires {@link onDidChangeUsage}. */
+  private setAndEmitUsage(usage: OrvixUsageSnapshot): void {
+    this.usage = usage;
+    this.usageEmitter.fire(usage);
   }
 }
 

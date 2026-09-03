@@ -58,6 +58,10 @@
         "title": "Orvix: Open Usage"
       },
       {
+        "command": "orvixCopilot.showUsage",
+        "title": "Orvix: Show Usage and Credits"
+      },
+      {
         "command": "orvixCopilot.testConnection",
         "title": "Orvix: Test Inference"
       },
@@ -120,6 +124,11 @@
           "type": "boolean",
           "default": false,
           "description": "Log request, stream, usage, and model-discovery metadata to the Orvix output channel. Prompts and API keys are never logged."
+        },
+        "orvixCopilot.showUsageStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Orvix credits and usage in the status bar. Click to open the usage quick pick."
         }
       }
     },
