@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isTransientNetworkError, isTransientServerError, retryDelayMs } from "./retry";
-test("retries only gateway and availability failures", () => {
+test("retries documented rate-limit, gateway, and availability failures", () => {
+  assert.equal(isTransientServerError(429), true);
   assert.equal(isTransientServerError(502), true);
   assert.equal(isTransientServerError(503), true);
   assert.equal(isTransientServerError(504), true);
   assert.equal(isTransientServerError(500), false);
+  assert.equal(isTransientServerError(402), false);
 });
 test("recognizes transient network errors but not cancellation", () => {
   assert.equal(isTransientNetworkError(new TypeError("fetch failed", { cause: new Error("ECONNRESET") })), true);

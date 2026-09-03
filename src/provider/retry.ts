@@ -1,5 +1,5 @@
 export function isTransientServerError(status: number): boolean {
-  return status === 502 || status === 503 || status === 504;
+  return status === 429 || status === 502 || status === 503 || status === 504;
 }
 export function isTransientNetworkError(error: unknown): boolean {
   if (!(error instanceof Error) || error.name === "AbortError") return false;

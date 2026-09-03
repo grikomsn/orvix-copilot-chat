@@ -41,9 +41,22 @@ export interface OrvixApiModel {
 }
 
 export const FALLBACK_MODEL_METADATA: readonly OrvixModelMetadata[] = [
-  model("orvix/auto", 128_000, DEFAULT_MAX_OUTPUT_TOKENS),
-  model("orvix/muse-spark-1.2", 1_000_000, 32_000, true),
+  model("orvix/auto", 128_000, DEFAULT_MAX_OUTPUT_TOKENS, false, true),
+  model("orvix/muse-spark-1.2", 1_000_000, 32_000, true, true, true),
 ];
+
+const MANAGED_CAPABILITIES = new Map<string, Pick<OrvixModelMetadata, "imageInput" | "toolCalling" | "reasoningEffort">>([
+  ["orvix/auto", { imageInput: false, toolCalling: true, reasoningEffort: false }],
+  ["orvix/muse-spark-1.2", { imageInput: true, toolCalling: true, reasoningEffort: true }],
+  ["orvix/glm-5.3-flash", { imageInput: false, toolCalling: false, reasoningEffort: false }],
+  ["orvix/gpt-5.6-luna", { imageInput: true, toolCalling: true, reasoningEffort: true }],
+  ["orvix/deepseek-v4-flash", { imageInput: false, toolCalling: true, reasoningEffort: false }],
+  ["orvix/gemini-3.7-flash", { imageInput: true, toolCalling: true, reasoningEffort: false }],
+  ["orvix/minimax-m3", { imageInput: false, toolCalling: true, reasoningEffort: false }],
+  ["orvix/qwen-3.8-max", { imageInput: true, toolCalling: true, reasoningEffort: false }],
+  ["orvix/deepseek-v4-pro", { imageInput: false, toolCalling: true, reasoningEffort: true }],
+  ["orvix/kimi-k3", { imageInput: false, toolCalling: true, reasoningEffort: false }],
+]);
 
 const PREFERRED_ORDER = new Map<string, number>(FALLBACK_MODELS.map((id, index) => [id, index]));
 const FALLBACK_METADATA_BY_ID = new Map(FALLBACK_MODEL_METADATA.map((metadata) => [metadata.id, metadata]));
@@ -126,6 +139,7 @@ function modelMetadataFromApi(raw: OrvixApiModel): OrvixModelMetadata | undefine
   const architecture = record(raw.architecture);
   const modalities = stringArray(raw.input_modalities) ?? stringArray(architecture?.input_modalities);
   const rawName = typeof raw.name === "string" ? raw.name : "";
+  const managedCapabilities = MANAGED_CAPABILITIES.get(id);
   return {
     id,
     name: rawName.trim() ? rawName.replace(/^Orvix:\s*/i, "").trim() : fallback.name,
@@ -133,9 +147,12 @@ function modelMetadataFromApi(raw: OrvixApiModel): OrvixModelMetadata | undefine
     contextLength:
       positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len) ?? fallback.contextLength,
     maxOutputTokens: positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens) ?? fallback.maxOutputTokens,
-    imageInput: modalities?.some((value) => value.toLowerCase() === "image") ?? /(?:vision|\bvl\b)/i.test(rawName),
-    toolCalling: boolean(raw.tool_calling ?? raw.tool_call) ?? fallback.toolCalling,
-    reasoningEffort: false,
+    imageInput:
+      boolean(modalities?.some((value) => value.toLowerCase() === "image")) ??
+      managedCapabilities?.imageInput ??
+      /(?:vision|\bvl\b)/i.test(rawName),
+    toolCalling: boolean(raw.tool_calling ?? raw.tool_call) ?? managedCapabilities?.toolCalling ?? fallback.toolCalling,
+    reasoningEffort: managedCapabilities?.reasoningEffort ?? false,
     ...(typeof raw.description === "string" && raw.description.trim() ? { description: raw.description.trim() } : {}),
     ...(unixDate(raw.created) ? { releaseDate: unixDate(raw.created) } : {}),
     ...(typeof raw.owned_by === "string" && raw.owned_by.trim() ? { ownedBy: raw.owned_by.trim() } : {}),
@@ -143,7 +160,14 @@ function modelMetadataFromApi(raw: OrvixApiModel): OrvixModelMetadata | undefine
   };
 }
 
-function model(id: string, contextLength: number, maxOutputTokens: number, imageInput = false): OrvixModelMetadata {
+function model(
+  id: string,
+  contextLength: number,
+  maxOutputTokens: number,
+  imageInput = false,
+  toolCalling = false,
+  reasoningEffort = false,
+): OrvixModelMetadata {
   return {
     id,
     name: formatModelName(id),
@@ -151,8 +175,8 @@ function model(id: string, contextLength: number, maxOutputTokens: number, image
     contextLength,
     maxOutputTokens,
     imageInput,
-    toolCalling: true,
-    reasoningEffort: false,
+    toolCalling,
+    reasoningEffort,
     cost: orvixModelCost(id),
   };
 }

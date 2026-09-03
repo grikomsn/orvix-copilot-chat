@@ -45,6 +45,7 @@ export function resolveModelsDevMetadata(
   modelId: string,
   ownedBy?: string,
 ): ModelsDevModelMetadata | undefined {
+  if (/^orvix\//i.test(modelId) || ownedBy?.trim().toLowerCase() === "orvix") return undefined;
   const nativeId = modelId.replace(/^orvix\//i, "");
   const owner = ownedBy?.trim().toLowerCase();
   return (owner && owner !== "orvix" ? snapshot.models[`${owner}/${nativeId}`] : undefined) ?? snapshot.models[nativeId];
