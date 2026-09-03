@@ -32,6 +32,7 @@ export interface OrvixApiModel {
   readonly max_completion_tokens?: unknown;
   readonly input_modalities?: unknown;
   readonly architecture?: unknown;
+  readonly capabilities?: unknown;
   readonly pricing?: unknown;
   readonly tool_calling?: unknown;
   readonly tool_call?: unknown;
@@ -57,19 +58,18 @@ const MANAGED_MODEL_NAMES = new Map<string, string>([
   ["orvix/kimi-k3", "Kimi K3"],
 ]);
 
-// The managed catalogue endpoint currently returns IDs without limits or
-// capabilities. Limits are the enforced Orvix per-request ceilings;
-// capabilities reflect the route-specific matrix on platform.orvix.id/models.
+// The fallback catalogue mirrors Orvix's enforced per-request ceilings and
+// route capabilities. Live nested capabilities override these values.
 const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
-  modelEntry("orvix/auto", 450_000, 80_000, false, true),
+  modelEntry("orvix/auto", 450_000, 16_384),
   modelEntry("orvix/muse-spark-1.2", 450_000, 80_000, true, true, true),
   modelEntry("orvix/muse-spark-1.3", 450_000, 80_000, true, true, true),
   modelEntry("orvix/mimo-v2.5", 450_000, 128_000, true, true),
   modelEntry("orvix/mimo-v2.5-pro", 450_000, 128_000, false, true),
   modelEntry("orvix/glm-5.3-flash", 450_000, 131_072),
   modelEntry("orvix/gpt-5.6-luna", 450_000, 128_000, true, true, true),
-  modelEntry("orvix/deepseek-v4-flash", 450_000, 65_536, false, true),
-  modelEntry("orvix/deepseek-v4-pro", 450_000, 32_768, false, true, true),
+  modelEntry("orvix/deepseek-v4-flash", 450_000, 384_000, false, true),
+  modelEntry("orvix/deepseek-v4-pro", 450_000, 384_000, false, true, true),
   modelEntry("orvix/gemini-3.7-flash", 450_000, 32_000, true, true),
   modelEntry("orvix/gemini-3.8-flash", 450_000, 32_000, true, true),
   modelEntry("orvix/minimax-m3", 450_000, 32_768, false, true),
@@ -161,6 +161,7 @@ function modelMetadataFromApi(raw: OrvixApiModel): OrvixModelMetadata | undefine
   const id = canonicalModelId(raw.id);
   const fallback = getModelMetadata(id);
   const architecture = record(raw.architecture);
+  const capabilities = record(raw.capabilities);
   const modalities = stringArray(raw.input_modalities) ?? stringArray(architecture?.input_modalities);
   const rawName = typeof raw.name === "string" ? raw.name : "";
   const managedMetadata = MANAGED_MODEL_METADATA.get(id);
@@ -174,13 +175,20 @@ function modelMetadataFromApi(raw: OrvixApiModel): OrvixModelMetadata | undefine
     version: typeof raw.version === "string" && raw.version ? raw.version : fallback.version,
     contextLength:
       positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len) ?? fallback.contextLength,
-    maxOutputTokens: positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens) ?? fallback.maxOutputTokens,
+    maxOutputTokens:
+      positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens ?? capabilities?.max_output_tokens) ??
+      fallback.maxOutputTokens,
     imageInput:
+      boolean(capabilities?.vision) ??
       boolean(modalities?.some((value) => value.toLowerCase() === "image")) ??
       managedMetadata?.imageInput ??
       /(?:vision|\bvl\b)/i.test(rawName),
-    toolCalling: boolean(raw.tool_calling ?? raw.tool_call) ?? managedMetadata?.toolCalling ?? fallback.toolCalling,
-    reasoningEffort: managedMetadata?.reasoningEffort ?? false,
+    toolCalling:
+      boolean(raw.tool_calling ?? raw.tool_call ?? capabilities?.tools) ??
+      managedMetadata?.toolCalling ??
+      fallback.toolCalling,
+    reasoningEffort:
+      boolean(capabilities?.reasoning_effort) ?? managedMetadata?.reasoningEffort ?? fallback.reasoningEffort,
     ...(typeof raw.description === "string" && raw.description.trim() ? { description: raw.description.trim() } : {}),
     ...(unixDate(raw.created) ? { releaseDate: unixDate(raw.created) } : {}),
     ...(typeof raw.owned_by === "string" && raw.owned_by.trim() ? { ownedBy: raw.owned_by.trim() } : {}),

@@ -50,6 +50,9 @@ test("provides documented fallback limits", () => {
   });
   assert.equal(formatTokenLimit(1_000_000), "1M");
   assert.equal(formatTokenLimit(262_144), "256K");
+  assert.equal(getModelMetadata("orvix/auto").maxOutputTokens, 16_384);
+  assert.equal(getModelMetadata("orvix/auto").toolCalling, false);
+  assert.equal(getModelMetadata("orvix/deepseek-v4-flash").maxOutputTokens, 384_000);
 });
 
 test("uses exactly the discovered catalog and advertised metadata", () => {
@@ -88,6 +91,24 @@ test("normalizes managed names instead of trusting provider-prefixed API labels"
   ]);
   assert.equal(models.find(({ id }) => id === "orvix/mimo-v2.5")?.name, "MiMo-V2.5");
   assert.equal(models.find(({ id }) => id === "orvix/custom-chat")?.name, "Custom Chat");
+});
+
+test("prefers live nested Orvix capabilities over managed fallbacks", () => {
+  const [model] = orderModelMetadata([
+    {
+      id: "orvix/deepseek-v4-pro",
+      capabilities: {
+        max_output_tokens: 384_000,
+        reasoning_effort: false,
+        vision: true,
+        tools: false,
+      },
+    },
+  ]);
+  assert.equal(model.maxOutputTokens, 384_000);
+  assert.equal(model.reasoningEffort, false);
+  assert.equal(model.imageInput, true);
+  assert.equal(model.toolCalling, false);
 });
 
 test("uses live capability flags without sending undocumented reasoning controls", () => {
@@ -141,7 +162,7 @@ test("uses the official managed route metadata for discovered models", () => {
       {
         id: "orvix/deepseek-v4-pro",
         contextLength: 450_000,
-        maxOutputTokens: 32_768,
+        maxOutputTokens: 384_000,
         imageInput: false,
         toolCalling: true,
         reasoningEffort: true,
