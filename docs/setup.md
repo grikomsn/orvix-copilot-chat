@@ -31,6 +31,7 @@ Provider-entry discovery uses `https://api.orvix.id/v1/models`. The live respons
 | **Orvix: Test Inference** | Send a small non-streaming verification request |
 | **Orvix: Open API Keys** | Open the Orvix API Keys page |
 | **Orvix: Open Usage** | Open Orvix usage in the browser |
+| **Orvix: Show Usage and Credits** | Show credits, requests, spend, and session tracking, with refresh and page links |
 | **Orvix: Show Diagnostics** | Show endpoint, key state, and registered models |
 
 ## Settings
@@ -43,6 +44,7 @@ Provider-entry discovery uses `https://api.orvix.id/v1/models`. The live respons
 | `orvixCopilot.streamIdleTimeoutSeconds` | `120` | Maximum silence during a response stream |
 | `orvixCopilot.catalogCacheMinutes` | `5` | Live catalog refresh interval |
 | `orvixCopilot.debugLogging` | `false` | Log metadata without prompts or credentials |
+| `orvixCopilot.showUsageStatusBar` | `true` | Show Orvix credits and usage in the status bar |
 
 Models with a supported reasoning capability expose a **Reasoning Effort** picker
 in the Copilot model picker. The available values are verified per model against

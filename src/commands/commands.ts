@@ -4,34 +4,45 @@ import * as vscode from "vscode";
 import { OrvixAuth } from "../auth/auth";
 import { messageOf } from "../errors";
 import { API_BASE, OrvixProvider } from "../provider";
+import { formatUsageRows } from "../usage/domain";
+import { toUsageQuickPickItem, type UsageQuickPickItem } from "../usage/presentation";
 
 const API_KEYS_URL = "https://platform.orvix.id/api-keys";
 const USAGE_URL = "https://platform.orvix.id/usage";
+const BILLING_URL = "https://platform.orvix.id/billing";
 
 export function registerCommands(
   auth: OrvixAuth,
   provider: OrvixProvider,
   output: vscode.OutputChannel,
+  usageStatus?: vscode.StatusBarItem,
 ): vscode.Disposable[] {
   return [
-    vscode.commands.registerCommand("orvixCopilot.manage", () => manage(auth, provider, output)),
+    vscode.commands.registerCommand("orvixCopilot.manage", () => manage(auth, provider, output, usageStatus)),
     vscode.commands.registerCommand("orvixCopilot.configureApiKey", () => configureApiKey(provider, output)),
     vscode.commands.registerCommand("orvixCopilot.removeApiKey", () => removeApiKey(provider)),
     vscode.commands.registerCommand("orvixCopilot.refreshModels", () => refreshModels(provider)),
     vscode.commands.registerCommand("orvixCopilot.openUsage", () => openUsage()),
+    vscode.commands.registerCommand("orvixCopilot.showUsage", () => showUsage(provider, usageStatus)),
     vscode.commands.registerCommand("orvixCopilot.testConnection", () => testConnection(provider, output)),
     vscode.commands.registerCommand("orvixCopilot.openApiKeys", () => openApiKeys()),
     vscode.commands.registerCommand("orvixCopilot.diagnostics", () => diagnostics(auth, output)),
   ];
 }
 
-async function manage(auth: OrvixAuth, provider: OrvixProvider, output: vscode.OutputChannel): Promise<void> {
+async function manage(
+  auth: OrvixAuth,
+  provider: OrvixProvider,
+  output: vscode.OutputChannel,
+  usageStatus?: vscode.StatusBarItem,
+): Promise<void> {
   const configured = await auth.hasApiKey();
   const choices = configured
     ? [
         { label: "$(check) Test Orvix inference", action: "test" },
         { label: "$(refresh) Refresh available models", action: "refresh" },
-        { label: "$(graph) Open Orvix usage", action: "usage" },
+        { label: "$(credit-card) Show usage and credits", action: "usage" },
+        { label: "$(graph) Open Orvix usage", action: "open-usage" },
         { label: "$(key) Replace API key", action: "configure" },
         { label: "$(link-external) Open Orvix API keys", action: "open" },
         { label: "$(output) Show Orvix logs", action: "logs" },
@@ -50,7 +61,8 @@ async function manage(auth: OrvixAuth, provider: OrvixProvider, output: vscode.O
   if (picked.action === "configure") await configureApiKey(provider, output);
   else if (picked.action === "refresh") await refreshModels(provider);
   else if (picked.action === "test") await testConnection(provider, output);
-  else if (picked.action === "usage") await openUsage();
+  else if (picked.action === "usage") await showUsage(provider, usageStatus);
+  else if (picked.action === "open-usage") await openUsage();
   else if (picked.action === "open") await openApiKeys();
   else if (picked.action === "logs") output.show(true);
   else if (picked.action === "diagnostics") await diagnostics(auth, output);
@@ -138,6 +150,33 @@ async function openApiKeys(): Promise<void> {
 async function openUsage(): Promise<void> {
   const opened = await vscode.env.openExternal(vscode.Uri.parse(USAGE_URL));
   if (!opened) vscode.window.showWarningMessage("VS Code could not open Orvix usage.");
+}
+
+async function showUsage(provider: OrvixProvider, usageStatus?: vscode.StatusBarItem): Promise<void> {
+  const rows = formatUsageRows(provider.getUsageSnapshot()).map(toUsageQuickPickItem);
+  const actions: UsageQuickPickItem[] = [
+    { label: "$(refresh) Refresh credits and usage", description: "Re-fetch from the Orvix gateway", action: "refresh" },
+    { label: "$(link-external) Open Orvix usage", description: "platform.orvix.id/usage", action: "openUsage" },
+    { label: "$(link-external) Open Billing & Credits", description: "platform.orvix.id/billing", action: "openBilling" },
+  ];
+  const picked = await vscode.window.showQuickPick([...rows, ...actions], {
+    title: "Orvix usage and credits",
+    placeHolder: "Credits, requests, and spend",
+  });
+  if (!picked?.action) return;
+  if (picked.action === "refresh") {
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: "Refreshing Orvix credits and usage…" },
+      () => provider.refreshUsage(),
+    );
+    usageStatus?.show();
+    await showUsage(provider, usageStatus);
+  } else if (picked.action === "openUsage") {
+    await openUsage();
+  } else if (picked.action === "openBilling") {
+    const opened = await vscode.env.openExternal(vscode.Uri.parse(BILLING_URL));
+    if (!opened) vscode.window.showWarningMessage("VS Code could not open Orvix billing.");
+  }
 }
 
 async function diagnostics(auth: OrvixAuth, output: vscode.OutputChannel): Promise<void> {

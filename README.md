@@ -24,6 +24,7 @@ This extension is a native VS Code `LanguageModelChatProvider`. It validates a p
 - Streaming text, reasoning output, token usage, images, and function-tool calls
 - Agent mode function-tool calls with complete argument validation
 - Bounded retries for pre-stream network and gateway failures only
+- Orvix Credits and usage tracking with a status-bar balance and quick-pick details
 
 ## Quick start
 
