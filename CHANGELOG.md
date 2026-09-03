@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+### Minor Changes
+
+- 38087e7: Add Orvix Credits and usage tracking: a status-bar balance (`Show Usage and Credits`), a quick-pick overview with refresh plus links to the Orvix usage and billing pages, 7-day usage summary, credit transactions, and per-request token tracking persisted across sessions.
+
 ## 0.2.1
 
 ### Patch Changes
