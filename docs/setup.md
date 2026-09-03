@@ -66,8 +66,9 @@ default.
 ## Credits and usage
 
 Inference uses the `orv-sk_live_` API key, which is inferencing-only. The Orvix
-**gateway** (`gateway.orvix.id`) that serves credits and usage is authenticated by
-a **user session** instead. To populate the credits/usage status bar:
+**gateway** (`gateway.orvix.id`) that serves credits, usage, and balance is
+authenticated by a **user session** instead. To populate the credits/usage
+status bar:
 
 1. Sign in at <https://platform.orvix.id> and open your browser DevTools console.
 2. Run `JSON.parse(localStorage['orvix.auth.session'])` and copy the `token` value.
@@ -76,6 +77,10 @@ a **user session** instead. To populate the credits/usage status bar:
 The token is stored in VS Code Secret Storage. It expires after about an hour,
 so re-import when prompted. Without it, the extension still shows locally
 tracked request/token totals for the current session from the inference stream.
+
+With a session imported, **Orvix: Show Usage and Credits** also surfaces your
+**IDR account balance** and **active plans** (the rupiah balance is separate
+from the USD provider credits shown on `/billing`), plus your top-up history.
 
 ## Troubleshooting
 

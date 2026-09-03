@@ -51,6 +51,8 @@ export function toUsageQuickPickItem(row: UsageDisplayRow): UsageQuickPickItem {
     request: "$(history)",
     requests: "$(request-changes)",
     tokens: "$(symbol-numeric)",
+    balance: "$(credit-card)",
+    plan: "$(calendar)",
     warning: "$(warning)",
     session: "$(account)",
     empty: "$(circle-slash)",

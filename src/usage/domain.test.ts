@@ -3,12 +3,15 @@ import test from "node:test";
 import {
   formatCompactTokens,
   formatCreditsUsd,
+  formatIdr,
   formatUsageRows,
   formatUsageStatusBar,
   formatUsageTooltip,
   formatUsd,
   mergeUsageSnapshot,
+  parseAccountBalancePayload,
   parseBillingPayload,
+  parseTopUpsPayload,
   parseTransactionsPayload,
   parseUsageSummaryPayload,
   recordApiRequestUsage,
@@ -167,6 +170,66 @@ test("caps transactions to the given limit", () => {
   assert.equal(parseTransactionsPayload({ data: {} }), undefined);
 });
 
+test("parses account balance payload with rupiah balance and plans", () => {
+  assert.deepEqual(
+    parseAccountBalancePayload({
+      success: true,
+      data: {
+        balanceIdr: 10000,
+        plans: [
+          {
+            id: "p1",
+            planName: "Flame",
+            unitsTotal: 12000000,
+            unitsRemaining: 11693634,
+            pricePaidIdr: 40000,
+            expiresAt: null,
+            createdAt: "2026-09-01T17:12:12.520Z",
+          },
+        ],
+        transactions: [
+          { id: "t1", type: "purchase", amountIdr: -40000, balanceAfterIdr: 10000, reason: "Purchased Flame", createdAt: "2026-09-01T17:12:12.520Z" },
+        ],
+      },
+    }),
+    {
+      balanceIdr: 10000,
+      plans: [
+        { id: "p1", planName: "Flame", unitsTotal: 12000000, unitsRemaining: 11693634, pricePaidIdr: 40000, createdAt: "2026-09-01T17:12:12.520Z" },
+      ],
+      transactions: [
+        { id: "t1", type: "purchase", amountIdr: -40000, balanceAfterIdr: 10000, reason: "Purchased Flame", createdAt: "2026-09-01T17:12:12.520Z" },
+      ],
+    },
+  );
+});
+
+test("handles malformed or empty account balance payloads", () => {
+  assert.equal(parseAccountBalancePayload({ success: true, data: null }), undefined);
+  assert.equal(parseAccountBalancePayload({ data: {} }), undefined);
+  assert.equal(parseAccountBalancePayload(undefined), undefined);
+});
+
+test("parses top-ups payload and ignores non-positive entries", () => {
+  assert.deepEqual(
+    parseTopUpsPayload({
+      success: true,
+      data: [
+        { id: "tu_1", amountIdr: 50000, paymentAmount: 50001, status: "paid", createdAt: "2026-09-01T17:10:31.179Z" },
+        { id: "", amountIdr: 1, status: "pending" },
+      ],
+    }),
+    [{ id: "tu_1", amountIdr: 50000, paymentAmount: 50001, status: "paid", createdAt: "2026-09-01T17:10:31.179Z" }],
+  );
+  assert.equal(parseTopUpsPayload({ data: [] }), undefined);
+  assert.equal(parseTopUpsPayload({ data: {} }), undefined);
+});
+
+test("formats rupiah amounts", () => {
+  assert.equal(formatIdr(10000), "Rp10.000");
+  assert.equal(formatIdr(undefined), "—");
+});
+
 test("records per-request usage and accumulates tracked totals", () => {
   const raw = {
     prompt_tokens: 140,
@@ -289,4 +352,25 @@ test("shows tracked totals on the status bar without gateway credits", () => {
   });
   assert.match(status, /12 req/);
   assert.match(status, /900 tok/);
+});
+
+test("surfaces rupiah balance and active plans in status bar and rows", () => {
+  const snapshot = {
+    account: {
+      balanceIdr: 10000,
+      plans: [
+        { id: "p1", planName: "Flame", unitsTotal: 12000000, unitsRemaining: 11693634, createdAt: "2026-09-01T17:12:12.520Z" },
+      ],
+      transactions: [
+        { id: "t1", type: "topup", amountIdr: 50000, balanceAfterIdr: 50000 },
+      ],
+    },
+    updatedAt: 1000,
+  };
+  assert.match(formatUsageStatusBar(snapshot), /Rp10\.000/);
+  assert.match(formatUsageTooltip(snapshot), /Balance: Rp10\.000/);
+  assert.match(formatUsageTooltip(snapshot), /Plan Flame: 11\.7M\/12M tokens/);
+  const rows = formatUsageRows(snapshot);
+  assert.ok(rows.some((row) => row.kind === "balance" && row.label.includes("Rp10.000")));
+  assert.ok(rows.some((row) => row.kind === "plan" && row.label.includes("Flame")));
 });

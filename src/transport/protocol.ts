@@ -9,11 +9,13 @@ export const ORVIX_ENDPOINTS = {
   chat: `${API_BASE}/chat/completions`,
 } as const;
 
-/** Fixed gateway endpoints for credits and usage data. */
+/** Fixed gateway endpoints for credits, usage, and account balance data. */
 export const ORVIX_GATEWAY_ENDPOINTS = {
   billing: `${GATEWAY_BASE}/billing`,
   transactions: `${GATEWAY_BASE}/billing/transactions`,
   usageSummary: `${GATEWAY_BASE}/usage/summary`,
+  balance: `${GATEWAY_BASE}/balance`,
+  topUps: `${GATEWAY_BASE}/balance/topups`,
 } as const;
 
 /**

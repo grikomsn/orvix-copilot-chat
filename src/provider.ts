@@ -34,6 +34,8 @@ import {
   parseBillingPayload,
   parseTransactionsPayload,
   parseUsageSummaryPayload,
+  parseAccountBalancePayload,
+  parseTopUpsPayload,
   recordApiRequestUsage,
   type OrvixUsageSnapshot,
 } from "./usage/domain";
@@ -168,6 +170,37 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       this.mergeAndEmitUsage({ summary, updatedAt: Date.now() });
     } catch (error) {
       this.output.appendLine(`[usage] Orvix usage summary refresh unavailable: ${messageOf(error)}`);
+    }
+
+    try {
+      const balanceResponse = await fetch(ORVIX_GATEWAY_ENDPOINTS.balance, {
+        headers: this.gatewaySessionHeaders(session, "application/json"),
+      });
+      if (balanceResponse.status === 401) {
+        throw new Error("Orvix usage requires a refreshed browser sign-in");
+      }
+      if (!balanceResponse.ok) throw await apiError("Unable to read Orvix balance", balanceResponse);
+      const account = parseAccountBalancePayload(await balanceResponse.json());
+      this.mergeAndEmitUsage({ account, updatedAt: Date.now() });
+
+      let topUps;
+      try {
+        const topUpResponse = await fetch(ORVIX_GATEWAY_ENDPOINTS.topUps, {
+          headers: this.gatewaySessionHeaders(session, "application/json"),
+        });
+        if (topUpResponse.status === 401) {
+          throw new Error("Orvix usage requires a refreshed browser sign-in");
+        }
+        if (!topUpResponse.ok) throw await apiError("Unable to read Orvix top-ups", topUpResponse);
+        topUps = parseTopUpsPayload(await topUpResponse.json());
+      } catch (error) {
+        this.output.appendLine(`[usage] Orvix top-ups refresh unavailable: ${messageOf(error)}`);
+      }
+      this.mergeAndEmitUsage({ topUps, updatedAt: Date.now() });
+    } catch (error) {
+      const message = messageOf(error);
+      this.output.appendLine(`[usage] Orvix balance refresh unavailable: ${message}`);
+      this.mergeAndEmitUsage({ apiError: message, updatedAt: Date.now() });
     }
 
     return this.getUsageSnapshot();
