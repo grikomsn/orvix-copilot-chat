@@ -118,10 +118,10 @@ async function testConnection(provider: OrvixProvider, output: vscode.OutputChan
       () => provider.testConnection(),
     );
     output.appendLine(
-      `[test] model=${result.model} response=${result.text}`,
+      `[test] model=${result.model} effort=${result.reasoningEffort ?? "model-default"} response=${result.text}`,
     );
     vscode.window.showInformationMessage(
-      `Orvix verified with ${result.model}: ${result.text}`,
+      `Orvix verified with ${result.model}${result.reasoningEffort ? ` (${result.reasoningEffort} effort)` : ""}: ${result.text}`,
     );
   } catch (error) {
     const message = messageOf(error);
@@ -148,6 +148,7 @@ async function diagnostics(auth: OrvixAuth, output: vscode.OutputChannel): Promi
     `- VS Code: ${vscode.version}`,
     `- API endpoint: ${API_BASE}`,
     `- API key: ${(await auth.hasApiKey()) ? "configured in Secret Storage" : "missing"}`,
+    `- Default reasoning effort: ${vscode.workspace.getConfiguration("orvixCopilot").get("reasoningEffort", "high")}`,
     `- Registered models: ${models.length}`,
     "",
     ...models.map((model) => `- ${model.id} (${model.maxInputTokens} input tokens)`),

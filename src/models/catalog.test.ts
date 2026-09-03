@@ -121,9 +121,9 @@ test("uses the official managed capability matrix for discovered models", () => 
     })),
     [
       { id: "orvix/gemini-3.7-flash", imageInput: true, toolCalling: true, reasoningEffort: false },
-      { id: "orvix/glm-5.3-flash", imageInput: false, toolCalling: false, reasoningEffort: false },
-      { id: "orvix/kimi-k3", imageInput: false, toolCalling: true, reasoningEffort: false },
-      { id: "orvix/qwen-3.8-max", imageInput: true, toolCalling: true, reasoningEffort: false },
+      { id: "orvix/glm-5.3-flash", imageInput: false, toolCalling: false, reasoningEffort: true },
+      { id: "orvix/kimi-k3", imageInput: false, toolCalling: true, reasoningEffort: true },
+      { id: "orvix/qwen-3.8-max", imageInput: true, toolCalling: true, reasoningEffort: true },
     ],
   );
 });
