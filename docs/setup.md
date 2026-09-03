@@ -37,11 +37,27 @@ Provider-entry discovery uses `https://api.orvix.id/v1/models`. The live respons
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
+| `orvixCopilot.reasoningEffort` | `high` | Default reasoning effort for models that support it |
 | `orvixCopilot.maxOutputTokens` | `0` | Use the model maximum, or cap output explicitly |
 | `orvixCopilot.requestTimeoutSeconds` | `600` | Total inference timeout |
 | `orvixCopilot.streamIdleTimeoutSeconds` | `120` | Maximum silence during a response stream |
 | `orvixCopilot.catalogCacheMinutes` | `5` | Live catalog refresh interval |
 | `orvixCopilot.debugLogging` | `false` | Log metadata without prompts or credentials |
+
+Models with a supported reasoning capability expose a **Reasoning Effort** picker
+in the Copilot model picker. The available values are verified per model against
+the live Orvix API (Orvix forwards `reasoning_effort` to the upstream provider,
+so values the upstream rejects surface as HTTP 502):
+
+| Model | Reasoning Effort values |
+| --- | --- |
+| `orvix/auto`, `orvix/muse-spark-1.2`, `orvix/muse-spark-1.3`, `orvix/deepseek-v4-flash`, `orvix/deepseek-v4-pro`, `orvix/gemini-3.7-flash`, `orvix/kimi-k3`, `orvix/minimax-m3`, `orvix/qwen-3.8-max` | `minimal`, `low`, `medium`, `high`, `max` |
+| `orvix/glm-5.3-flash` | `low`, `high` |
+| `orvix/gpt-5.6-luna` | `low`, `medium`, `high`, `max` |
+
+The per-request picker selection overrides `orvixCopilot.reasoningEffort`. The
+default is `high`, and unsupported values fall back to the model's profile
+default.
 
 ## Troubleshooting
 

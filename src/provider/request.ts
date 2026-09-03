@@ -1,14 +1,17 @@
 import * as vscode from "vscode";
 import { resolveMaxOutputTokens } from "../models/catalog";
+import { applyReasoningEffort, type ReasoningEffort } from "../models/options";
 import { convertMessages } from "./messages";
 
 export function buildRequest(
   model: string,
   messages: readonly vscode.LanguageModelChatRequestMessage[],
   options: vscode.ProvideLanguageModelChatResponseOptions,
+  reasoningEffort: ReasoningEffort | undefined,
   advertisedMaxTokens: number,
   configuredMaxTokens: number,
   imageInput: boolean,
+  supportsReasoningEffort: boolean,
 ): Record<string, unknown> {
   const maxTokens = resolveMaxOutputTokens(configuredMaxTokens, advertisedMaxTokens);
   const tools = (options.tools ?? []).map((tool) => ({
@@ -32,7 +35,7 @@ export function buildRequest(
         }
       : {}),
   };
-  return body;
+  return supportsReasoningEffort && reasoningEffort ? applyReasoningEffort(body, reasoningEffort) : body;
 }
 
 function sanitizeSchema(schema: unknown): Record<string, unknown> {

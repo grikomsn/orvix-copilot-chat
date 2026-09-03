@@ -48,14 +48,15 @@ export const FALLBACK_MODEL_METADATA: readonly OrvixModelMetadata[] = [
 const MANAGED_CAPABILITIES = new Map<string, Pick<OrvixModelMetadata, "imageInput" | "toolCalling" | "reasoningEffort">>([
   ["orvix/auto", { imageInput: false, toolCalling: true, reasoningEffort: false }],
   ["orvix/muse-spark-1.2", { imageInput: true, toolCalling: true, reasoningEffort: true }],
-  ["orvix/glm-5.3-flash", { imageInput: false, toolCalling: false, reasoningEffort: false }],
+  ["orvix/muse-spark-1.3", { imageInput: true, toolCalling: true, reasoningEffort: true }],
+  ["orvix/glm-5.3-flash", { imageInput: false, toolCalling: false, reasoningEffort: true }],
   ["orvix/gpt-5.6-luna", { imageInput: true, toolCalling: true, reasoningEffort: true }],
-  ["orvix/deepseek-v4-flash", { imageInput: false, toolCalling: true, reasoningEffort: false }],
+  ["orvix/deepseek-v4-flash", { imageInput: false, toolCalling: true, reasoningEffort: true }],
   ["orvix/gemini-3.7-flash", { imageInput: true, toolCalling: true, reasoningEffort: false }],
-  ["orvix/minimax-m3", { imageInput: false, toolCalling: true, reasoningEffort: false }],
-  ["orvix/qwen-3.8-max", { imageInput: true, toolCalling: true, reasoningEffort: false }],
+  ["orvix/minimax-m3", { imageInput: false, toolCalling: true, reasoningEffort: true }],
+  ["orvix/qwen-3.8-max", { imageInput: true, toolCalling: true, reasoningEffort: true }],
   ["orvix/deepseek-v4-pro", { imageInput: false, toolCalling: true, reasoningEffort: true }],
-  ["orvix/kimi-k3", { imageInput: false, toolCalling: true, reasoningEffort: false }],
+  ["orvix/kimi-k3", { imageInput: false, toolCalling: true, reasoningEffort: true }],
 ]);
 
 const PREFERRED_ORDER = new Map<string, number>(FALLBACK_MODELS.map((id, index) => [id, index]));

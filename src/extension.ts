@@ -18,6 +18,7 @@ export function activate(context: vscode.ExtensionContext): void {
     output,
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (
+        event.affectsConfiguration("orvixCopilot.reasoningEffort") ||
         event.affectsConfiguration("orvixCopilot.catalogCacheMinutes")
       ) {
         provider.fireDidChange();

@@ -12,6 +12,12 @@ import {
   type OrvixModelMetadata,
 } from "./models/catalog";
 import { modelPricingFields } from "./models/pricing";
+import {
+  applyReasoningEffort,
+  buildThinkingSchema,
+  resolveEffortValue,
+  type ReasoningEffort,
+} from "./models/options";
 import { parseCatalogSnapshots } from "./models/cache";
 import { ModelsDevMetadata, resolveModelsDevMetadata } from "./models/metadata";
 import { ChatCompletionStreamParser, validateStreamCompletion } from "./transport/sse";
@@ -29,6 +35,7 @@ export { API_BASE } from "./transport/protocol";
 export interface OrvixModel extends vscode.LanguageModelChatInformation {
   rawModelId: string;
   credentialRef: string;
+  reasoningEffort: boolean;
 }
 
 export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixModel> {
@@ -113,6 +120,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         id: qualifiedModelId(credentialRef, metadata.id),
         rawModelId: metadata.id,
         credentialRef,
+        reasoningEffort: metadata.reasoningEffort,
         name: metadata.name || formatModelName(metadata.id),
         family: modelFamily(metadata.id),
         version: metadata.version,
@@ -134,6 +142,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure Orvix API key" } }
           : {}),
+        ...(buildThinkingSchema(metadata) ?? {}),
         capabilities: {
           imageInput: metadata.imageInput,
           toolCalling: metadata.toolCalling,
@@ -151,13 +160,20 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     token: vscode.CancellationToken,
   ): Promise<void> {
     const apiKey = await this.requireApiKey(false, model.credentialRef);
+    const reasoningEffort = resolveEffortValue(
+      model,
+      options.modelConfiguration,
+      this.configuration.get("reasoningEffort", "high"),
+    );
     const requestBody = buildRequest(
       model.rawModelId,
       messages,
       options,
+      reasoningEffort,
       model.maxOutputTokens,
       this.configuration.get("maxOutputTokens", 0),
       Boolean(model.capabilities?.imageInput),
+      model.reasoningEffort,
     );
     const controller = new AbortController();
     const cancellation = token.onCancellationRequested(() => controller.abort());
@@ -180,7 +196,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     try {
       if (this.debugLogging) {
         this.output.appendLine(
-          `[request] model=${model.rawModelId} initiator=${
+          `[request] model=${model.rawModelId} effort=${reasoningEffort} initiator=${
             options.requestInitiator ?? "unknown"
           }`,
         );
@@ -237,12 +253,17 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
 
   async testConnection(): Promise<{
     model: string;
+    reasoningEffort?: ReasoningEffort;
     text: string;
   }> {
     const credentialRef = "legacy";
     const apiKey = await this.requireApiKey(false, credentialRef);
     const models = this.catalogFor(credentialRef);
     const model = models[0]?.id ?? FALLBACK_MODELS[0];
+    const modelMetadata = models[0];
+    const reasoningEffort = modelMetadata
+      ? resolveEffortValue(modelMetadata, undefined, this.configuration.get("reasoningEffort", "high"))
+      : undefined;
     const requestBody = {
       model,
       messages: [
@@ -257,7 +278,9 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     const response = await fetch(ORVIX_ENDPOINTS.chat, {
       method: "POST",
       headers: this.requestHeaders(apiKey, "application/json"),
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(
+        reasoningEffort ? applyReasoningEffort(requestBody, reasoningEffort) : requestBody,
+      ),
     });
     if (!response.ok) throw await apiError("Orvix connection test failed", response);
     const responseBody = (await response.json()) as {
@@ -265,6 +288,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     };
     return {
       model,
+      ...(reasoningEffort ? { reasoningEffort } : {}),
       text: responseBody.choices?.[0]?.message?.content?.trim() ?? "(empty response)",
     };
   }

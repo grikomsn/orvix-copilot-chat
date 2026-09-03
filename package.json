@@ -73,6 +73,25 @@
     "configuration": {
       "title": "Orvix for Copilot Chat",
       "properties": {
+        "orvixCopilot.reasoningEffort": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "max"
+          ],
+          "default": "high",
+          "enumDescriptions": [
+            "Use minimal reasoning for the fastest, cheapest responses.",
+            "Use less reasoning for lower latency and cost.",
+            "Balance reasoning depth, latency, and cost.",
+            "Use deeper reasoning for complex tasks.",
+            "Use the model's maximum reasoning effort."
+          ],
+          "description": "Default Orvix reasoning effort. A Copilot model-picker selection overrides this value."
+        },
         "orvixCopilot.maxOutputTokens": {
           "type": "number",
           "default": 0,
