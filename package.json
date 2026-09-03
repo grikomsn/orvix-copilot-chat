@@ -1,0 +1,148 @@
+{
+  "name": "orvix-copilot-chat",
+  "displayName": "Orvix for GitHub Copilot Chat",
+  "description": "Use Orvix managed and BYOK models in GitHub Copilot Chat with your Orvix API key.",
+  "version": "0.0.0",
+  "publisher": "grikomsn",
+  "icon": "assets/icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/grikomsn/orvix-copilot-chat.git"
+  },
+  "bugs": {
+    "url": "https://github.com/grikomsn/orvix-copilot-chat/issues"
+  },
+  "homepage": "https://github.com/grikomsn/orvix-copilot-chat#readme",
+  "engines": {
+    "vscode": "^1.125.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "orvix",
+    "openai-compatible",
+    "copilot",
+    "copilot-chat",
+    "api-key",
+    "language-model"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguageModelChatProvider:orvix"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "orvixCopilot.manage",
+        "title": "Orvix: Manage Connection"
+      },
+      {
+        "command": "orvixCopilot.configureApiKey",
+        "title": "Orvix: Configure API Key"
+      },
+      {
+        "command": "orvixCopilot.removeApiKey",
+        "title": "Orvix: Remove API Key"
+      },
+      {
+        "command": "orvixCopilot.refreshModels",
+        "title": "Orvix: Refresh Models"
+      },
+      {
+        "command": "orvixCopilot.openUsage",
+        "title": "Orvix: Open Usage"
+      },
+      {
+        "command": "orvixCopilot.testConnection",
+        "title": "Orvix: Test Inference"
+      },
+      {
+        "command": "orvixCopilot.openApiKeys",
+        "title": "Orvix: Open API Keys"
+      },
+      {
+        "command": "orvixCopilot.diagnostics",
+        "title": "Orvix: Show Diagnostics"
+      }
+    ],
+    "configuration": {
+      "title": "Orvix for Copilot Chat",
+      "properties": {
+        "orvixCopilot.maxOutputTokens": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Maximum output tokens requested from Orvix. Use 0 to use the selected model's advertised maximum."
+        },
+        "orvixCopilot.requestTimeoutSeconds": {
+          "type": "number",
+          "default": 600,
+          "minimum": 10,
+          "description": "Maximum duration of a Orvix inference request in seconds."
+        },
+        "orvixCopilot.streamIdleTimeoutSeconds": {
+          "type": "number",
+          "default": 120,
+          "minimum": 10,
+          "description": "Maximum time without receiving streamed Orvix response data before aborting a request."
+        },
+        "orvixCopilot.catalogCacheMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "How long the Orvix model catalog is reused before refreshing."
+        },
+        "orvixCopilot.debugLogging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log request, stream, usage, and model-discovery metadata to the Orvix output channel. Prompts and API keys are never logged."
+        }
+      }
+    },
+    "languageModelChatProviders": [
+      {
+        "vendor": "orvix",
+        "displayName": "Orvix",
+        "configuration": {
+          "type": "object",
+          "required": [
+            "apiKey"
+          ],
+          "properties": {
+            "apiKey": {
+              "type": "string",
+              "title": "Orvix API Key",
+              "description": "API key for this Orvix provider entry. VS Code stores configured secrets securely.",
+              "secret": true
+            }
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\"",
+    "compile": "npm run clean && tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test \"out/**/*.test.js\"",
+    "check": "npm test",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "npm run check && vsce publish --skip-duplicate",
+    "prepackage": "npm run check",
+    "package": "vsce package",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.125.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^6.0.3"
+  }
+}
