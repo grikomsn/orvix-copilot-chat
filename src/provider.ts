@@ -303,7 +303,9 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure Orvix API key" } }
           : {}),
-        ...(buildThinkingSchema(metadata) ?? {}),
+        ...(buildThinkingSchema(metadata)
+          ? { configurationSchema: buildThinkingSchema(metadata) }
+          : {}),
         capabilities: {
           imageInput: metadata.imageInput,
           toolCalling: metadata.toolCalling,
