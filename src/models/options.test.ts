@@ -17,6 +17,8 @@ test("omits reasoning controls disabled by the managed route", () => {
   assert.equal(buildThinkingSchema(model("orvix/glm-5.3-flash", false)), undefined);
   assert.equal(buildThinkingSchema(model("orvix/deepseek-v4-flash", false)), undefined);
   assert.equal(buildThinkingSchema(model("orvix/minimax-m3", false)), undefined);
+  assert.equal(buildThinkingSchema(model("orvix/grok-4.6", false)), undefined);
+  assert.equal(buildThinkingSchema(model("orvix/qwen-3.8-flash", false)), undefined);
 });
 
 test("uses the documented Luna and DeepSeek effort profiles", () => {
@@ -28,6 +30,37 @@ test("uses the documented Luna and DeepSeek effort profiles", () => {
     "high",
     "max",
   ]);
+});
+
+test("uses the verified GLM 5.2 and GPT-5.6 Sol/Terra effort profiles", () => {
+  const glm = buildThinkingSchema(model("orvix/glm-5.2"));
+  assert.deepEqual(glm?.properties.reasoningEffort.enum, [
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ]);
+  assert.equal(glm?.properties.reasoningEffort.default, "high");
+  for (const id of ["orvix/gpt-5.6-sol", "orvix/gpt-5.6-terra"]) {
+    assert.deepEqual(buildThinkingSchema(model(id))?.properties.reasoningEffort.enum, [
+      "none",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+  }
+});
+
+test("accepts minimal on GPT-5.6 Sol and Terra where Luna rejects it", () => {
+  assert.equal(resolveEffortValue(model("orvix/gpt-5.6-sol"), { reasoningEffort: "minimal" }, "high"), "minimal");
+  assert.equal(resolveEffortValue(model("orvix/gpt-5.6-terra"), { reasoningEffort: "minimal" }, "high"), "minimal");
+  assert.equal(resolveEffortValue(model("orvix/gpt-5.6-luna"), { reasoningEffort: "minimal" }, "high"), "high");
 });
 
 test("omits the schema for models without reasoning", () => {

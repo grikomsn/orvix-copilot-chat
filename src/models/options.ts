@@ -22,12 +22,23 @@ const DEEPSEEK_V4_PRO_PROFILE: ThinkingProfile = {
   values: ["none", "low", "high", "max"],
   defaultValue: "high",
 };
+const GLM_52_PROFILE: ThinkingProfile = {
+  values: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+  defaultValue: "high",
+};
+const GPT_56_SOL_TERRA_PROFILE: ThinkingProfile = {
+  values: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+  defaultValue: "high",
+};
 
 const THINKING_PROFILES = new Map<string, ThinkingProfile>([
   ["orvix/muse-spark-1.2", MUSE_PROFILE],
   ["orvix/muse-spark-1.3", MUSE_PROFILE],
   ["orvix/deepseek-v4-pro", DEEPSEEK_V4_PRO_PROFILE],
+  ["orvix/glm-5.2", GLM_52_PROFILE],
   ["orvix/gpt-5.6-luna", GPT_56_LUNA_PROFILE],
+  ["orvix/gpt-5.6-sol", GPT_56_SOL_TERRA_PROFILE],
+  ["orvix/gpt-5.6-terra", GPT_56_SOL_TERRA_PROFILE],
 ]);
 
 export function buildThinkingSchema(model: ModelIdentity): {
