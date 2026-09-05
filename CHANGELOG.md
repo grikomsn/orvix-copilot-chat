@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4
+
+### Patch Changes
+
+- e13add6: Improve display-name normalization for model IDs that are not yet in the managed catalog: future `orvix/*` entries drop the redundant vendor prefix and recurring families render with vendor casing (`GPT`, `GLM`, `MiMo`, `DeepSeek`, `MiniMax`, title-cased `Qwen`/`Kimi`).
+- e13add6: Resync the managed model catalog with the live Orvix directory. Adds display names and enforced limits for `orvix/glm-5.2`, `orvix/gpt-5.6-sol`, `orvix/gpt-5.6-terra`, `orvix/grok-4.6`, and `orvix/qwen-3.8-flash`, and exposes verified Reasoning Effort pickers for the new reasoning-capable models (`orvix/glm-5.2`, `orvix/gpt-5.6-sol`, `orvix/gpt-5.6-terra`).
+
 ## 0.3.3
 
 ### Patch Changes
