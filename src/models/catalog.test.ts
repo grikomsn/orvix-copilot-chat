@@ -41,6 +41,25 @@ test("formats model IDs for the VS Code picker", () => {
   assert.equal(formatModelName("orvix/minimax-m3"), "MiniMax M3");
 });
 
+test("formats unknown managed models with vendor casing for future catalog entries", () => {
+  assert.equal(formatModelName("orvix/gpt-5.7-sol"), "GPT 5.7 Sol");
+  assert.equal(formatModelName("orvix/qwen-4-flash"), "Qwen 4 Flash");
+  assert.equal(formatModelName("orvix/kimi-k4"), "Kimi K4");
+  assert.equal(formatModelName("orvix/deepseek-v5-lite"), "DeepSeek V5 Lite");
+  assert.equal(formatModelName("orvix/minimax-m4"), "MiniMax M4");
+  assert.equal(formatModelName("orvix/mimo-v3"), "MiMo V3");
+  assert.equal(formatModelName("orvix/glm-6-flash"), "GLM 6 Flash");
+  assert.equal(formatModelName("orvix/qwen-4-vl"), "Qwen 4 VL");
+  assert.equal(formatModelName("orvix/grok-5"), "Grok 5");
+  assert.equal(formatModelName("orvix/gemini-4.0-pro"), "Gemini 4.0 Pro");
+  assert.equal(formatModelName("orvix/foo-ai"), "Foo AI");
+});
+
+test("keeps unprefixed BYOK names without a vendor prefix", () => {
+  assert.equal(formatModelName("my-finetune-v2"), "My Finetune V2");
+  assert.equal(formatModelName("custom-vision"), "Custom Vision");
+});
+
 test("provides documented fallback limits", () => {
   assert.deepEqual(getModelMetadata("orvix/muse-spark-1.2"), {
     id: "orvix/muse-spark-1.2",

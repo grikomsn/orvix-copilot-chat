@@ -92,6 +92,18 @@ export const FALLBACK_MODEL_METADATA: readonly OrvixModelMetadata[] = [
   managedModel("orvix/muse-spark-1.2"),
 ];
 
+// Casing for recurring model-family tokens that plain capitalization gets
+// wrong, so unknown future managed IDs render close to vendor naming.
+const MANAGED_FAMILY_TOKENS = new Map<string, string>([
+  ["ai", "AI"],
+  ["gpt", "GPT"],
+  ["glm", "GLM"],
+  ["vl", "VL"],
+  ["mimo", "MiMo"],
+  ["deepseek", "DeepSeek"],
+  ["minimax", "MiniMax"],
+]);
+
 const PREFERRED_ORDER = new Map<string, number>(FALLBACK_MODELS.map((id, index) => [id, index]));
 
 export function isOrvixChatModel(id: string): boolean {
@@ -156,11 +168,12 @@ export function formatModelName(id: string): string {
   const canonical = canonicalModelId(id);
   const managedName = MANAGED_MODEL_NAMES.get(canonical);
   if (managedName) return managedName;
-  return canonical
-    .replaceAll("/", " ")
-    .split(/[-\s]+/)
+  const parts = canonical.replace(/^orvix\//, "").split(/[-\s]+/).filter(Boolean);
+  return parts
     .map((part) => {
-      if (/^(ai|glm|kimi|mimo|qwen|vl|v\d+(?:\.\d+)?)$/i.test(part)) return part.toUpperCase();
+      const family = MANAGED_FAMILY_TOKENS.get(part);
+      if (family) return family;
+      if (/^v\d+(?:\.\d+)?$/.test(part)) return part.toUpperCase();
       return part.charAt(0).toUpperCase() + part.slice(1);
     })
     .join(" ");
