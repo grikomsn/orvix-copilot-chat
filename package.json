@@ -85,6 +85,56 @@
     "configuration": {
       "title": "Orvix for Copilot Chat",
       "properties": {
+        "orvixCopilot.inlineSuggestions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Experimental. Provide ghost-text inline completions while typing, powered by the Orvix gateway with reasoning_effort none. Credentials, prompts, and document context are never logged."
+        },
+        "orvixCopilot.inlineSuggestionsModel": {
+          "type": "string",
+          "default": "orvix/deepseek-v4-pro",
+          "description": "Model id used for inline completions. orvix/deepseek-v4-pro is the only model measured to honor reasoning_effort none with zero hidden reasoning; orvix/glm-5.2 ignores the switch and is not recommended."
+        },
+        "orvixCopilot.inlineSuggestionsChatInput": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also offer inline completions inside the Copilot Chat prompt box."
+        },
+        "orvixCopilot.inlineSuggestionsDebounceMs": {
+          "type": "number",
+          "default": 300,
+          "minimum": 50,
+          "maximum": 2000,
+          "description": "Debounce window in milliseconds between typing and an inline completion request."
+        },
+        "orvixCopilot.inlineSuggestionsTimeoutMs": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 500,
+          "maximum": 15000,
+          "description": "Per-request timeout in milliseconds for inline completions."
+        },
+        "orvixCopilot.inlineSuggestionsMaxTokens": {
+          "type": "number",
+          "default": 128,
+          "minimum": 16,
+          "maximum": 1024,
+          "description": "Maximum tokens generated per inline completion."
+        },
+        "orvixCopilot.inlineSuggestionsPrefixLines": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Lines of document context sent before the cursor."
+        },
+        "orvixCopilot.inlineSuggestionsSuffixChars": {
+          "type": "number",
+          "default": 300,
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Characters of document context sent after the cursor."
+        },
         "orvixCopilot.reasoningEffort": {
           "type": "string",
           "enum": [

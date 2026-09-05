@@ -14,6 +14,10 @@ The extension contacts:
 
 The live Orvix catalog remains authoritative. Prompt and tool content is sent only to Orvix for inference. The extension never sends the Orvix API key, prompts, or responses to models.dev.
 
+## Inline completions
+
+When `orvixCopilot.inlineSuggestions` is enabled, each suggestion sends a bounded window of the current document (a fixed number of lines before the cursor and a bounded suffix after it) plus the stored API key to the same `/chat/completions` endpoint. Upstream error bodies are never surfaced or logged because they can echo prompt context, and suggestion text flows only into the editor's ghost text. The feature is disabled by default.
+
 ## Logging
 
 Debug logs contain model IDs, request state, retries, usage counters, and error summaries. They exclude API keys, authorization headers, prompts, tool arguments, and response text. Credential references are short one-way hashes used only to isolate in-memory and persisted model catalogs.
