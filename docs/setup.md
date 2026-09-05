@@ -55,9 +55,10 @@ so values the upstream rejects surface as HTTP 502):
 
 | Model | Reasoning Effort values |
 | --- | --- |
-| `orvix/auto`, `orvix/muse-spark-1.2`, `orvix/muse-spark-1.3`, `orvix/deepseek-v4-flash`, `orvix/deepseek-v4-pro`, `orvix/gemini-3.7-flash`, `orvix/kimi-k3`, `orvix/minimax-m3`, `orvix/qwen-3.8-max` | `minimal`, `low`, `medium`, `high`, `max` |
-| `orvix/glm-5.3-flash` | `low`, `high` |
-| `orvix/gpt-5.6-luna` | `low`, `medium`, `high`, `max` |
+| `orvix/muse-spark-1.2`, `orvix/muse-spark-1.3` | `minimal`, `low`, `medium`, `high`, `xhigh` |
+| `orvix/deepseek-v4-pro` | `none`, `low`, `high`, `max` |
+| `orvix/glm-5.2`, `orvix/gpt-5.6-sol`, `orvix/gpt-5.6-terra` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |
+| `orvix/gpt-5.6-luna` | `none`, `low`, `medium`, `high`, `xhigh`, `max` |
 
 The per-request picker selection overrides `orvixCopilot.reasoningEffort`. The
 default is `high`, and unsupported values fall back to the model's profile

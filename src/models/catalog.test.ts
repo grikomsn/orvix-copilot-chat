@@ -31,9 +31,33 @@ test("formats model IDs for the VS Code picker", () => {
   assert.equal(formatModelName("orvix/auto"), "Orvix Auto");
   assert.equal(formatModelName("orvix/muse-spark-1.2"), "Muse Spark 1.2");
   assert.equal(formatModelName("orvix/mimo-v2.5-pro"), "MiMo-V2.5-Pro");
+  assert.equal(formatModelName("orvix/glm-5.2"), "GLM 5.2");
   assert.equal(formatModelName("orvix/gpt-5.6-luna"), "GPT-5.6 Luna");
+  assert.equal(formatModelName("orvix/gpt-5.6-sol"), "GPT-5.6 Sol");
+  assert.equal(formatModelName("orvix/gpt-5.6-terra"), "GPT-5.6 Terra");
+  assert.equal(formatModelName("orvix/grok-4.6"), "Grok 4.6");
+  assert.equal(formatModelName("orvix/qwen-3.8-flash"), "Qwen 3.8 Flash");
   assert.equal(formatModelName("orvix/deepseek-v4-pro"), "DeepSeek V4 Pro");
   assert.equal(formatModelName("orvix/minimax-m3"), "MiniMax M3");
+});
+
+test("formats unknown managed models with vendor casing for future catalog entries", () => {
+  assert.equal(formatModelName("orvix/gpt-5.7-sol"), "GPT 5.7 Sol");
+  assert.equal(formatModelName("orvix/qwen-4-flash"), "Qwen 4 Flash");
+  assert.equal(formatModelName("orvix/kimi-k4"), "Kimi K4");
+  assert.equal(formatModelName("orvix/deepseek-v5-lite"), "DeepSeek V5 Lite");
+  assert.equal(formatModelName("orvix/minimax-m4"), "MiniMax M4");
+  assert.equal(formatModelName("orvix/mimo-v3"), "MiMo V3");
+  assert.equal(formatModelName("orvix/glm-6-flash"), "GLM 6 Flash");
+  assert.equal(formatModelName("orvix/qwen-4-vl"), "Qwen 4 VL");
+  assert.equal(formatModelName("orvix/grok-5"), "Grok 5");
+  assert.equal(formatModelName("orvix/gemini-4.0-pro"), "Gemini 4.0 Pro");
+  assert.equal(formatModelName("orvix/foo-ai"), "Foo AI");
+});
+
+test("keeps unprefixed BYOK names without a vendor prefix", () => {
+  assert.equal(formatModelName("my-finetune-v2"), "My Finetune V2");
+  assert.equal(formatModelName("custom-vision"), "Custom Vision");
 });
 
 test("provides documented fallback limits", () => {
@@ -53,6 +77,27 @@ test("provides documented fallback limits", () => {
   assert.equal(getModelMetadata("orvix/auto").maxOutputTokens, 16_384);
   assert.equal(getModelMetadata("orvix/auto").toolCalling, false);
   assert.equal(getModelMetadata("orvix/deepseek-v4-flash").maxOutputTokens, 384_000);
+});
+
+test("mirrors live capabilities for newly added managed models", () => {
+  assert.deepEqual(getModelMetadata("orvix/glm-5.2"), {
+    id: "orvix/glm-5.2",
+    name: "GLM 5.2",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 32_768,
+    imageInput: false,
+    toolCalling: true,
+    reasoningEffort: true,
+    cost: undefined,
+  });
+  assert.equal(getModelMetadata("orvix/gpt-5.6-sol").imageInput, true);
+  assert.equal(getModelMetadata("orvix/gpt-5.6-sol").maxOutputTokens, 128_000);
+  assert.equal(getModelMetadata("orvix/gpt-5.6-terra").reasoningEffort, true);
+  assert.equal(getModelMetadata("orvix/grok-4.6").imageInput, true);
+  assert.equal(getModelMetadata("orvix/grok-4.6").reasoningEffort, false);
+  assert.equal(getModelMetadata("orvix/qwen-3.8-flash").imageInput, false);
+  assert.equal(getModelMetadata("orvix/qwen-3.8-flash").maxOutputTokens, 65_536);
 });
 
 test("uses exactly the discovered catalog and advertised metadata", () => {
