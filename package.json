@@ -38,6 +38,10 @@
   "contributes": {
     "commands": [
       {
+        "command": "orvixCopilot.setInlineSuggestionsModel",
+        "title": "Orvix: Set Inline Suggestions Model"
+      },
+      {
         "command": "orvixCopilot.manage",
         "title": "Orvix: Manage Connection"
       },

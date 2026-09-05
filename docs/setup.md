@@ -56,6 +56,8 @@ Provider-entry discovery uses `https://api.orvix.id/v1/models`. The live respons
 | `orvixCopilot.inlineSuggestionsPrefixLines` | `10` | Document lines sent before the cursor |
 | `orvixCopilot.inlineSuggestionsSuffixChars` | `300` | Document characters sent after the cursor |
 
+**Orvix: Set Inline Suggestions Model** (also in the Manage menu) lists the models whose verified thinking profile includes `reasoning_effort: none`, ordered cheap-and-fast first with measured badges and warnings. A "Use a custom model id…" entry keeps any Orvix model id reachable (profiles without `none` will still think). The command only writes settings, so changes apply on the next keystroke without a reload.
+
 Models with a supported reasoning capability expose a **Reasoning Effort** picker
 in the Copilot model picker. The available values are verified per model against
 the live Orvix API (Orvix forwards `reasoning_effort` to the upstream provider,
