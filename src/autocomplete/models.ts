@@ -27,7 +27,19 @@ export interface InlineModelCandidate {
 const MEASURED: Readonly<Record<string, { badge: string; detail: string }>> = {
   "orvix/deepseek-v4-pro": {
     badge: "★ recommended · measured 2.2s TTFB",
-    detail: "Only model measured to honor reasoning_effort none with zero hidden reasoning, and DeepSeek pricing is the cheapest compatible tier.",
+    detail: "Fastest measured model honoring reasoning_effort none with zero hidden reasoning, and DeepSeek pricing is the cheapest compatible tier.",
+  },
+  "orvix/gpt-5.6-sol": {
+    badge: "measured 4.2s TTFB",
+    detail: "Zero hidden reasoning at reasoning_effort none with a correct completion; much slower than the default.",
+  },
+  "orvix/gpt-5.6-terra": {
+    badge: "measured 5.3s TTFB",
+    detail: "Zero hidden reasoning at reasoning_effort none with a correct completion; slowest compatible model.",
+  },
+  "orvix/gpt-5.6-luna": {
+    badge: "⚠ measured: wrong scaling",
+    detail: "Divides by max only instead of min-max despite honoring none; not recommended.",
   },
   "orvix/glm-5.2": {
     badge: "⚠ measured: ignores none",
@@ -36,11 +48,14 @@ const MEASURED: Readonly<Record<string, { badge: string; detail: string }>> = {
 };
 
 /** Stable tie-break order so unmeasured compatible models sort predictably. */
-const UNMEASURED_ORDER = ["orvix/gpt-5.6-luna", "orvix/gpt-5.6-sol", "orvix/gpt-5.6-terra"];
+const UNMEASURED_ORDER: readonly string[] = [];
 
 export function inlineModelCandidates(): readonly InlineModelCandidate[] {
   const measuredFirst = "orvix/deepseek-v4-pro";
   const compatible = inlineCompatibleModelIds();
+  const cleanMeasured = compatible
+    .filter((id) => id !== measuredFirst && MEASURED[id] && !MEASURED[id].badge.startsWith("⚠"))
+    .sort((left, right) => left.localeCompare(right));
   const unmeasured = compatible
     .filter((id) => id !== measuredFirst && !MEASURED[id])
     .sort((left, right) => {
@@ -56,6 +71,11 @@ export function inlineModelCandidates(): readonly InlineModelCandidate[] {
       badge: MEASURED[measuredFirst].badge,
       detail: MEASURED[measuredFirst].detail,
     },
+    ...cleanMeasured.map((id) => ({
+      id,
+      badge: MEASURED[id].badge,
+      detail: MEASURED[id].detail,
+    })),
     ...unmeasured.map((id) => ({
       id,
       badge: "compatible · unmeasured",

@@ -17,16 +17,14 @@ test("leads with the measured recommended default", () => {
   assert.equal(candidates[0]?.badge.includes("★ recommended"), true);
 });
 
-test("unmeasured compatible models follow the default; warnings come last", () => {
+test("clean measured models follow the default; warnings come last", () => {
   const candidates = inlineModelCandidates();
   const ids = candidates.map((candidate) => candidate.id);
-  assert.equal(ids[1], "orvix/gpt-5.6-luna");
-  assert.ok(ids.includes("orvix/gpt-5.6-sol"));
+  assert.equal(ids[1], "orvix/gpt-5.6-sol");
   assert.ok(ids.includes("orvix/gpt-5.6-terra"));
-  const glmIndex = ids.indexOf("orvix/glm-5.2");
-  assert.ok(glmIndex > 0);
-  assert.equal(candidates[glmIndex]?.badge.startsWith("⚠"), true);
-  assert.equal(ids.at(-1), "orvix/glm-5.2", "the warning model should sort last");
+  const warnings = candidates.filter((candidate) => candidate.badge.startsWith("⚠")).map((candidate) => candidate.id);
+  assert.deepEqual(warnings, ["orvix/glm-5.2", "orvix/gpt-5.6-luna"]);
+  assert.equal(ids.at(-1), "orvix/gpt-5.6-luna", "the last warning should sort after the first");
 });
 
 test("every candidate carries a badge and a rationale, ids unique", () => {
