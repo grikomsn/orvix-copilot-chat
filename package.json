@@ -2,7 +2,7 @@
   "name": "orvix-copilot-chat",
   "displayName": "Orvix for GitHub Copilot Chat",
   "description": "Use Orvix managed and BYOK models in GitHub Copilot Chat with your Orvix API key.",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "publisher": "grikomsn",
   "icon": "assets/icon.png",
   "license": "MIT",
