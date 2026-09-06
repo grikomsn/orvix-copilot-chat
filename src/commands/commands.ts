@@ -1,6 +1,8 @@
 /** User-facing Orvix commands and connection workflows. */
 
 import * as vscode from "vscode";
+import { CONFIG_SECTION, DEFAULT_INLINE_MODEL, INLINE_SUGGESTIONS_MODEL_SETTING } from "../autocomplete/config";
+import { inlineModelChoices } from "../autocomplete/models";
 import { OrvixAuth } from "../auth/auth";
 import { messageOf } from "../errors";
 import { API_BASE, OrvixProvider } from "../provider";
@@ -24,6 +26,7 @@ export function registerCommands(
     vscode.commands.registerCommand("orvixCopilot.removeApiKey", () => removeApiKey(provider)),
     vscode.commands.registerCommand("orvixCopilot.removeGatewaySession", () => removeGatewaySession(provider)),
     vscode.commands.registerCommand("orvixCopilot.refreshModels", () => refreshModels(provider)),
+    vscode.commands.registerCommand("orvixCopilot.setInlineSuggestionsModel", () => setInlineSuggestionsModel()),
     vscode.commands.registerCommand("orvixCopilot.openUsage", () => openUsage()),
     vscode.commands.registerCommand("orvixCopilot.showUsage", () => showUsage(provider, output, usageStatus)),
     vscode.commands.registerCommand("orvixCopilot.testConnection", () => testConnection(provider, output)),
@@ -43,6 +46,7 @@ async function manage(
     ? [
         { label: "$(check) Test Orvix inference", action: "test" },
         { label: "$(refresh) Refresh available models", action: "refresh" },
+        { label: "$(zap) Set inline suggestions model", action: "inlineModel" },
         { label: "$(credit-card) Show usage and credits", action: "usage" },
         { label: "$(graph) Open Orvix usage", action: "open-usage" },
         { label: "$(account) Import usage session", action: "session" },
@@ -63,6 +67,7 @@ async function manage(
   if (!picked) return;
   if (picked.action === "configure") await configureApiKey(provider, output);
   else if (picked.action === "refresh") await refreshModels(provider);
+  else if (picked.action === "inlineModel") await setInlineSuggestionsModel();
   else if (picked.action === "test") await testConnection(provider, output);
   else if (picked.action === "usage") await showUsage(provider, output, usageStatus);
   else if (picked.action === "session") await configureGatewaySession(provider, output);
@@ -177,6 +182,42 @@ async function refreshModels(provider: OrvixProvider): Promise<void> {
   } catch (error) {
     vscode.window.showErrorMessage(messageOf(error));
   }
+}
+
+interface InlineModelPickItem extends vscode.QuickPickItem {
+  readonly action?: string | "custom";
+}
+
+async function setInlineSuggestionsModel(): Promise<void> {
+  const configuration = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  const current = configuration.get<string>(INLINE_SUGGESTIONS_MODEL_SETTING, DEFAULT_INLINE_MODEL) ?? DEFAULT_INLINE_MODEL;
+  const picked = await vscode.window.showQuickPick<InlineModelPickItem>([
+    ...inlineModelChoices(current).map((choice) => ({
+      label: choice.label,
+      description: choice.description,
+      detail: choice.detail,
+      action: choice.id,
+    })),
+    { label: "", kind: vscode.QuickPickItemKind.Separator },
+    { label: "$(pencil) Use a custom model id…", detail: "Enter any Orvix model id; profiles without reasoning_effort none will still think.", action: "custom" as const },
+  ], {
+    title: "Orvix — Set Inline Suggestions Model",
+    placeHolder: `Current: ${current}`,
+  });
+  if (!picked?.action) return;
+  if (picked.action === "custom") {
+    const value = await vscode.window.showInputBox({
+      title: "Custom inline suggestions model id",
+      value: current,
+      prompt: "Any Orvix model id; the vetted list is a starting point, not a restriction.",
+    });
+    if (value === undefined || !value.trim()) return;
+    await configuration.update(INLINE_SUGGESTIONS_MODEL_SETTING, value.trim(), vscode.ConfigurationTarget.Global);
+    void vscode.window.showInformationMessage(`Orvix inline suggestions model set to ${value.trim()}.`);
+    return;
+  }
+  await configuration.update(INLINE_SUGGESTIONS_MODEL_SETTING, picked.action, vscode.ConfigurationTarget.Global);
+  void vscode.window.showInformationMessage(`Orvix inline suggestions model set to ${picked.action}. Applies on the next keystroke.`);
 }
 
 async function testConnection(provider: OrvixProvider, output: vscode.OutputChannel): Promise<void> {

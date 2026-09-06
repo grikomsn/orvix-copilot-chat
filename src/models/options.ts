@@ -41,6 +41,25 @@ const THINKING_PROFILES = new Map<string, ThinkingProfile>([
   ["orvix/gpt-5.6-terra", GPT_56_SOL_TERRA_PROFILE],
 ]);
 
+/**
+ * Model ids whose verified thinking profile includes the "none" value, i.e.
+ * models that can run a genuine no-reasoning inline completion. Used by the
+ * inline-suggestions model picker so newly verified profiles appear without
+ * duplicating the list.
+ *
+ * @example
+ * ```ts
+ * inlineCompatibleModelIds(); // ["orvix/deepseek-v4-pro", "orvix/gpt-5.6-luna", …]
+ * ```
+ *
+ * @see {@link THINKING_PROFILES}
+ */
+export function inlineCompatibleModelIds(): string[] {
+  return [...THINKING_PROFILES.entries()]
+    .filter(([, profile]) => profile.values.includes("none"))
+    .map(([id]) => id);
+}
+
 export function buildThinkingSchema(model: ModelIdentity): {
   type: "object";
   properties: Record<string, Record<string, unknown>>;

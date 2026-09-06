@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { registerInlineCompletions } from "./autocomplete";
 import { OrvixAuth } from "./auth/auth";
 import { registerCommands } from "./commands/commands";
 import { messageOf } from "./errors";
@@ -51,6 +52,12 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.lm.registerLanguageModelChatProvider("orvix", provider),
     ...registerCommands(auth, provider, output, usageStatus),
+    registerInlineCompletions(context, {
+      resolveApiKey: () => auth.getApiKey(),
+      output,
+      version: context.extension.packageJSON.version as string,
+      vscodeVersion: vscode.version,
+    }),
   );
 
   output.appendLine(

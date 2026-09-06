@@ -47,6 +47,16 @@ Provider-entry discovery uses `https://api.orvix.id/v1/models`. The live respons
 | `orvixCopilot.catalogCacheMinutes` | `5` | Live catalog refresh interval |
 | `orvixCopilot.debugLogging` | `false` | Log metadata without prompts or credentials |
 | `orvixCopilot.showUsageStatusBar` | `true` | Show Orvix credits and usage in the status bar |
+| `orvixCopilot.inlineSuggestions` | `false` | Experimental ghost-text inline completions while typing |
+| `orvixCopilot.inlineSuggestionsModel` | `orvix/deepseek-v4-pro` | Model used for inline completions at `reasoning_effort: none` |
+| `orvixCopilot.inlineSuggestionsChatInput` | `false` | Also offer suggestions inside the Copilot Chat prompt box |
+| `orvixCopilot.inlineSuggestionsDebounceMs` | `300` | Debounce between typing and a completion request |
+| `orvixCopilot.inlineSuggestionsTimeoutMs` | `3000` | Per-request completion timeout |
+| `orvixCopilot.inlineSuggestionsMaxTokens` | `128` | Tokens generated per suggestion |
+| `orvixCopilot.inlineSuggestionsPrefixLines` | `10` | Document lines sent before the cursor |
+| `orvixCopilot.inlineSuggestionsSuffixChars` | `300` | Document characters sent after the cursor |
+
+**Orvix: Set Inline Suggestions Model** (also in the Manage menu) lists the models whose verified thinking profile includes `reasoning_effort: none`, ordered cheap-and-fast first with measured badges and warnings. A "Use a custom model id…" entry keeps any Orvix model id reachable (profiles without `none` will still think). The command only writes settings, so changes apply on the next keystroke without a reload.
 
 Models with a supported reasoning capability expose a **Reasoning Effort** picker
 in the Copilot model picker. The available values are verified per model against
