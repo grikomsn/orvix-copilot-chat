@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyReasoningEffort, buildThinkingSchema, resolveEffortValue } from "./options";
+import {
+  applyReasoningEffort,
+  buildModelConfigurationSchema,
+  buildThinkingSchema,
+  contextSizeOptions,
+  resolveContextCap,
+  resolveContextSize,
+  resolveEffortValue,
+} from "./options";
 
 function model(id: string, reasoningEffort = true): { id: string; reasoningEffort: boolean } {
   return { id, reasoningEffort };
@@ -95,4 +103,38 @@ test("sends Orvix's OpenAI-compatible reasoning_effort parameter", () => {
     model: "orvix/deepseek-v4-pro",
     reasoning_effort: "none",
   });
+});
+
+test("offers context tiers below the registered input limit", () => {
+  assert.deepEqual(contextSizeOptions(450_000)?.map((option) => option.value), [0, 65_536, 131_072, 200_000, 450_000]);
+  assert.deepEqual(contextSizeOptions(450_000)?.map((option) => option.label), ["Auto", "64K", "128K", "200K", "Maximum"]);
+  assert.equal(contextSizeOptions(65_536), undefined);
+  assert.equal(contextSizeOptions(32_000), undefined);
+});
+
+test("resolves the effective context cap from the selected tier", () => {
+  assert.equal(resolveContextCap(131_072, 450_000), 131_072);
+  assert.equal(resolveContextCap(500_000, 450_000), undefined);
+  assert.equal(resolveContextCap(0, 450_000), undefined);
+  assert.equal(resolveContextCap(65_536, 65_536), undefined);
+});
+
+test("reads the context size from picker configuration", () => {
+  assert.equal(resolveContextSize({ contextSize: 131_072 }), 131_072);
+  assert.equal(resolveContextSize({ contextSize: 0 }), 0);
+  assert.equal(resolveContextSize({ contextSize: "131072" }), 0);
+  assert.equal(resolveContextSize(undefined), 0);
+});
+
+test("exposes the Context Window control with and without thinking controls", () => {
+  const combined = buildModelConfigurationSchema(model("orvix/muse-spark-1.2"), contextSizeOptions(450_000));
+  assert.deepEqual(combined?.properties.reasoningEffort.enum, ["minimal", "low", "medium", "high", "xhigh"]);
+  assert.deepEqual(combined?.properties.contextSize.enum, [0, 65_536, 131_072, 200_000, 450_000]);
+  assert.equal(combined?.properties.contextSize.default, 0);
+  assert.equal(combined?.properties.contextSize.group, "navigation");
+
+  const contextOnly = buildModelConfigurationSchema(model("orvix/deepseek-v4-flash", false), contextSizeOptions(450_000));
+  assert.equal("reasoningEffort" in (contextOnly?.properties ?? {}), false);
+  assert.deepEqual(contextOnly?.properties.contextSize.enum, [0, 65_536, 131_072, 200_000, 450_000]);
+  assert.equal(buildModelConfigurationSchema(model("orvix/deepseek-v4-flash", false), undefined), undefined);
 });

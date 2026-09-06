@@ -14,7 +14,10 @@ import {
 import { modelPricingFields } from "./models/pricing";
 import {
   applyReasoningEffort,
-  buildThinkingSchema,
+  buildModelConfigurationSchema,
+  contextSizeOptions,
+  resolveContextCap,
+  resolveContextSize,
   resolveEffortValue,
   type ReasoningEffort,
 } from "./models/options";
@@ -28,6 +31,7 @@ import { apiKeyFromConfiguration, credentialRefForApiKey, qualifiedModelId } fro
 import { isTransientNetworkError, isTransientServerError, retryDelayMs } from "./provider/retry";
 import { messageToText } from "./provider/messages";
 import { buildRequest } from "./provider/request";
+import { trimHistoryToFit } from "./provider/history-trim";
 import { reportEvent } from "./provider/response";
 import {
   mergeUsageSnapshot,
@@ -303,8 +307,8 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure Orvix API key" } }
           : {}),
-        ...(buildThinkingSchema(metadata)
-          ? { configurationSchema: buildThinkingSchema(metadata) }
+        ...(buildModelConfigurationSchema(metadata, contextSizeOptions(metadata.contextLength))
+          ? { configurationSchema: buildModelConfigurationSchema(metadata, contextSizeOptions(metadata.contextLength)) }
           : {}),
         capabilities: {
           imageInput: metadata.imageInput,
@@ -337,6 +341,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       this.configuration.get("maxOutputTokens", 0),
       Boolean(model.capabilities?.imageInput),
       model.reasoningEffort,
+      resolveContextCap(resolveContextSize(options.modelConfiguration), model.maxInputTokens),
     );
     const controller = new AbortController();
     const cancellation = token.onCancellationRequested(() => controller.abort());
