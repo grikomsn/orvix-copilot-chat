@@ -8,6 +8,7 @@ import {
   formatModelName,
   enrichModelMetadata,
   orderModelMetadata,
+  resolveMaxInputTokens,
   type OrvixApiModel,
   type OrvixModelMetadata,
 } from "./models/catalog";
@@ -300,15 +301,15 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         )} max output${metadata.imageInput ? " · image input" : " · text input"}${
           metadata.releaseDate ? ` · released ${metadata.releaseDate}` : ""
         }${pricing ? ` · ${pricing.pricing}` : ""}${metadata.description ? `\n${metadata.description}` : ""}`,
-        maxInputTokens: Math.max(1, metadata.contextLength - metadata.maxOutputTokens),
+        maxInputTokens: resolveMaxInputTokens(metadata),
         maxOutputTokens: metadata.maxOutputTokens,
         isUserSelectable: true,
         ...(credentialRef !== "legacy" ? { isBYOK: true } : {}),
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure Orvix API key" } }
           : {}),
-        ...(buildModelConfigurationSchema(metadata, contextSizeOptions(Math.max(1, metadata.contextLength - metadata.maxOutputTokens)))
-          ? { configurationSchema: buildModelConfigurationSchema(metadata, contextSizeOptions(Math.max(1, metadata.contextLength - metadata.maxOutputTokens))) }
+        ...(buildModelConfigurationSchema(metadata, contextSizeOptions(resolveMaxInputTokens(metadata)))
+          ? { configurationSchema: buildModelConfigurationSchema(metadata, contextSizeOptions(resolveMaxInputTokens(metadata))) }
           : {}),
         capabilities: {
           imageInput: metadata.imageInput,

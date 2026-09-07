@@ -128,6 +128,17 @@ export function resolveMaxOutputTokens(configured: number, advertised: number): 
   return configured > 0 ? Math.min(configured, advertised) : advertised;
 }
 
+/**
+ * The usable input window after reserving the model's output budget. VS Code
+ * treats `maxInputTokens` as the context it compacts against, so input plus
+ * output must sum to the model's context window.
+ */
+export function resolveMaxInputTokens(
+  metadata: Pick<OrvixModelMetadata, "contextLength" | "maxOutputTokens">,
+): number {
+  return Math.max(1, metadata.contextLength - metadata.maxOutputTokens);
+}
+
 export function orderModelMetadata(models: readonly OrvixApiModel[]): OrvixModelMetadata[] {
   const discovered = new Map<string, OrvixModelMetadata>();
   for (const raw of models) {
@@ -280,7 +291,10 @@ function liveContextLength(
   const context = positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len);
   const output = positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens ?? capabilities?.max_output_tokens);
   if (context === undefined) return undefined;
-  const minContext = output === undefined ? 1 : output + 1;
+  // Compare against the advertised output budget: the live cap when present,
+  // otherwise the managed fallback, so a context reported without an output
+  // cap cannot collapse the window below the fallback output.
+  const minContext = (output ?? fallbackOutputTokens) + 1;
   return context >= minContext ? context : undefined;
 }
 

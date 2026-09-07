@@ -112,6 +112,15 @@ test("offers context tiers below the registered input limit", () => {
   assert.equal(contextSizeOptions(32_000), undefined);
 });
 
+test("offers context tiers for the fixed input windows", () => {
+  // deepseek-v4-flash fallback window: 450,000 - 384,000.
+  assert.deepEqual(contextSizeOptions(66_000)?.map((option) => option.value), [0, 65_536, 66_000]);
+  // glm-5.3-flash fallback window: 450,000 - 131,072.
+  assert.deepEqual(contextSizeOptions(318_928)?.map((option) => option.value), [0, 65_536, 131_072, 200_000, 318_928]);
+  // deepseek-v4-flash live 1M window: 1,048,576 - 384,000.
+  assert.deepEqual(contextSizeOptions(664_576)?.map((option) => option.value), [0, 65_536, 131_072, 200_000, 664_576]);
+});
+
 test("resolves the effective context cap from the selected tier", () => {
   assert.equal(resolveContextCap(131_072, 450_000), 131_072);
   assert.equal(resolveContextCap(500_000, 450_000), undefined);
