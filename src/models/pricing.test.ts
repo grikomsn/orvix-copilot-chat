@@ -23,8 +23,11 @@ test("converts USD per-million rates to VS Code pricing fields", () => {
 });
 
 test("does not guess Orvix rates when live metadata omits pricing", () => {
-  assert.equal(orvixModelCost("orvix/muse-spark-1.2"), undefined);
+  // Managed models fall back to their best-effort upstream estimate.
+  assert.deepEqual(orvixModelCost("orvix/muse-spark-1.2"), { input: 1.25, output: 4.25, cacheRead: 0.15 });
+  // Live pricing still wins over the bundled estimate.
   assert.deepEqual(orvixModelCost("orvix/example", { input: 1, output: 2 }), { input: 1, output: 2 });
+  // Unknown models with no estimate stay undefined (no guessing).
   assert.equal(orvixModelCost("future-model"), undefined);
 });
 

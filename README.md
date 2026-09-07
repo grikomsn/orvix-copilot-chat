@@ -27,6 +27,8 @@ This extension is a native VS Code `LanguageModelChatProvider`. It validates a p
 - Orvix Credits and usage tracking with a status-bar balance and quick-pick details
 - Import a browser session token to unlock gateway credits/usage (the API key is inferencing-only)
 - Rupiah account balance, active plans, and top-up history surfaced in the usage quick pick
+- Best-effort per-token pricing in the model picker, sourced from live API data or upstream provider rates
+- Image generation tool (`orvixImages`) using prepaid Image Credits, tracked separately from USD credits
 
 ## Quick start
 

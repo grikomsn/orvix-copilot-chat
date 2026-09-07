@@ -74,6 +74,70 @@ export interface OrvixTopUp {
   createdAt?: string;
 }
 
+/**
+ * Prepaid Orvix Image Credits, tracked separately from USD credits.
+ *
+ * Image generation debits these integer units — never Ember tokens, wallet
+ * IDR, or Coding plan units — and each active image plan carries its own
+ * expiry, so the balance is the sum of remaining units across live plans.
+ */
+export interface OrvixImageCredits {
+  /** Sum of `unitsRemaining` across active image-credit plans. */
+  remaining: number;
+  /** Number of active plans that grant image credits. */
+  plans: number;
+  /** ISO timestamp of the soonest plan expiry, when any plan expires. */
+  nextExpiryAt?: string;
+  /** ISO timestamp of the balance snapshot. */
+  updatedAt?: string;
+}
+
+/**
+ * Extracts the Image Credits balance from an account balance payload.
+ *
+ * Image plans are the `plans[]` entries with `grantsImage: true`; the balance
+ * is the sum of their remaining units. Returns `undefined` when no image plans
+ * are active so callers can distinguish "no image credits" from "unknown".
+ *
+ * @example
+ * parseImageCredits({
+ *   balanceIdr: 0,
+ *   plans: [
+ *     { id: "p1", planName: "Image Credits 100", unitsRemaining: 93, grantsImage: true },
+ *     { id: "p2", planName: "Flame", unitsRemaining: 11693634, grantsImage: false },
+ *   ],
+ * });
+ * // => { remaining: 93, plans: 1 }
+ *
+ * @see {@link OrvixImageCredits}, {@link parseAccountBalancePayload}
+ */
+export function parseImageCredits(raw: unknown): OrvixImageCredits | undefined {
+  const root = isRecord(raw) ? raw : undefined;
+  if (!root) return undefined;
+  const data = isRecord(root.data) ? root.data : root;
+  const plans = Array.isArray(data.plans) ? data.plans.filter(isRecord) : [];
+  const imagePlans = plans.filter((plan) => plan.grantsImage === true);
+  if (!imagePlans.length) return undefined;
+  let remaining = 0;
+  let nextExpiryAt: string | undefined;
+  for (const plan of imagePlans) {
+    remaining += nonNegativeNumber(plan.unitsRemaining) ?? 0;
+    const expiry = textValue(plan.expiresAt);
+    if (expiry && (nextExpiryAt === undefined || expiry < nextExpiryAt)) nextExpiryAt = expiry;
+  }
+  return {
+    remaining,
+    plans: imagePlans.length,
+    ...(nextExpiryAt ? { nextExpiryAt } : {}),
+  };
+}
+
+/** Formats an Image Credits balance, e.g. `93 credits`. */
+export function formatImageCredits(remaining: number | undefined): string {
+  if (remaining === undefined) return "—";
+  return `${remaining.toLocaleString("en-US")} ${remaining === 1 ? "credit" : "credits"}`;
+}
+
 /** The rupiah account balance plus active plans, separate from USD credits. */
 export interface OrvixAccountBalance {
   balanceIdr: number;
@@ -114,6 +178,8 @@ export interface OrvixUsageSnapshot {
   summary?: OrvixUsageSummary;
   account?: OrvixAccountBalance;
   topUps?: OrvixTopUp[];
+  /** Prepaid Image Credits, tracked separately from USD credits. */
+  imageCredits?: OrvixImageCredits;
   lastRequest?: ApiRequestUsage;
   tracked?: TrackedApiUsage;
   /** Human-readable failure message from the last gateway refresh. */
@@ -474,6 +540,7 @@ export function mergeUsageSnapshot(
     transactions: update.transactions ?? current.transactions,
     account: update.account !== undefined ? { ...current.account, ...update.account } : current.account,
     topUps: update.topUps ?? current.topUps,
+    imageCredits: update.imageCredits ?? current.imageCredits,
     lastRequest: update.lastRequest ?? current.lastRequest,
     tracked: update.tracked !== undefined ? { ...current.tracked, ...update.tracked } : current.tracked,
   };
@@ -579,6 +646,7 @@ export function formatUsageStatusBar(snapshot: OrvixUsageSnapshot): string {
 export function formatUsageTooltip(snapshot: OrvixUsageSnapshot): string {
   const lines = ["Orvix credits and API activity"];
   appendCreditsLines(lines, snapshot.credits);
+  appendImageCreditsLines(lines, snapshot.imageCredits);
   appendAccountLines(lines, snapshot.account);
   appendSummaryLines(lines, snapshot.summary);
   appendTrackedLines(lines, snapshot);
@@ -601,6 +669,16 @@ function appendCreditsLines(lines: string[], credits: OrvixCreditBalance | undef
   lines.push(
     `Available credits: ${formatCreditsUsd(availableMicrousd, currency)}`
     + (reservedMicrousd === undefined ? "" : ` (${formatCreditsUsd(reservedMicrousd, currency)} reserved)`),
+  );
+}
+
+function appendImageCreditsLines(lines: string[], imageCredits: OrvixImageCredits | undefined): void {
+  if (!imageCredits) return;
+  const expiry = imageCredits.nextExpiryAt
+    ? ` · expires ${new Date(imageCredits.nextExpiryAt).toLocaleDateString()}`
+    : "";
+  lines.push(
+    `Image Credits: ${formatImageCredits(imageCredits.remaining)}${expiry} (separate from USD credits)`,
   );
 }
 
@@ -639,7 +717,7 @@ function appendTrackedLines(lines: string[], snapshot: OrvixUsageSnapshot): void
 }
 
 export interface UsageDisplayRow {
-  kind: "credits" | "spend" | "request" | "requests" | "tokens" | "balance" | "plan" | "warning" | "session" | "empty";
+  kind: "credits" | "imageCredits" | "spend" | "request" | "requests" | "tokens" | "balance" | "plan" | "warning" | "session" | "empty";
   label: string;
   description: string;
   detail?: string;
@@ -665,6 +743,7 @@ export interface UsageDisplayRow {
 export function formatUsageRows(snapshot: OrvixUsageSnapshot): UsageDisplayRow[] {
   const rows = [
     ...creditsRow(snapshot.credits),
+    ...imageCreditsRow(snapshot.imageCredits),
     ...accountRows(snapshot.account),
     ...summaryRows(snapshot.summary),
     ...trackedRows(snapshot),
@@ -677,6 +756,20 @@ export function formatUsageRows(snapshot: OrvixUsageSnapshot): UsageDisplayRow[]
       kind: "empty",
       label: "No live usage observed yet",
       description: "Send a request or refresh to load credits",
+    },
+  ];
+}
+
+/** Builds the prepaid Image Credits quick-pick row, if any. @see {@link formatUsageRows} */
+function imageCreditsRow(imageCredits: OrvixImageCredits | undefined): UsageDisplayRow[] {
+  if (!imageCredits) return [];
+  return [
+    {
+      kind: "imageCredits",
+      label: `Image Credits: ${formatImageCredits(imageCredits.remaining)}`,
+      description: imageCredits.nextExpiryAt
+        ? `Prepaid for image generation · expires ${new Date(imageCredits.nextExpiryAt).toLocaleDateString()}`
+        : "Prepaid for image generation (separate from USD credits)",
     },
   ];
 }

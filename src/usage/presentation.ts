@@ -47,6 +47,7 @@ export function renderUsageStatus(item: vscode.StatusBarItem, snapshot: OrvixUsa
 export function toUsageQuickPickItem(row: UsageDisplayRow): UsageQuickPickItem {
   const icon = {
     credits: "$(credit-card)",
+    imageCredits: "$(device-camera)",
     spend: "$(graph)",
     request: "$(history)",
     requests: "$(request-changes)",
