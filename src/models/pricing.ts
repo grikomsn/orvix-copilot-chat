@@ -12,8 +12,43 @@ export interface ModelPricingFields {
   readonly priceCategory: "low" | "medium" | "high" | "very_high";
 }
 
-export function orvixModelCost(_id: string, discovered?: ModelCost): ModelCost | undefined {
-  return discovered;
+/**
+ * Best-effort USD per-1M-token costs for Orvix managed models, derived from
+ * their upstream provider pricing (via models.dev). Orvix does not disclose
+ * per-token rates on its model endpoint, so these are used only when live
+ * pricing is absent, and are treated as estimates rather than authoritative
+ * Orvix billing.
+ */
+const MANAGED_MODEL_UPSTREAM_COST: Readonly<Record<string, ModelCost>> = {
+  "orvix/muse-spark-1.2": { input: 1.25, output: 4.25, cacheRead: 0.15 },
+  "orvix/muse-spark-1.3": { input: 1.25, output: 4.25, cacheRead: 0.15 },
+  "orvix/mimo-v2.5": { input: 0.14, output: 0.28, cacheRead: 0.0028 },
+  "orvix/mimo-v2.5-pro": { input: 0.435, output: 0.87, cacheRead: 0.0036 },
+  "orvix/glm-5.2": { input: 1.4, output: 4.4, cacheRead: 0.26 },
+  "orvix/glm-5.3-flash": { input: 0.075, output: 0.25, cacheRead: 0.015 },
+  "orvix/gpt-5.6-luna": { input: 0.2, output: 1.2, cacheRead: 0.02 },
+  "orvix/gpt-5.6-sol": { input: 4, output: 20, cacheRead: 0.4 },
+  "orvix/gpt-5.6-terra": { input: 2, output: 12, cacheRead: 0.2 },
+  "orvix/grok-4.6": { input: 2, output: 6, cacheRead: 0.5 },
+  "orvix/deepseek-v4-flash": { input: 0.14, output: 0.28, cacheRead: 0.0028 },
+  "orvix/deepseek-v4-pro": { input: 0.435, output: 0.87, cacheRead: 0.003625 },
+  "orvix/gemini-3.7-flash": { input: 0.75, output: 3.75, cacheRead: 0.075 },
+  "orvix/gemini-3.8-flash": { input: 0.75, output: 3.75, cacheRead: 0.075 },
+  "orvix/minimax-m3": { input: 0.3, output: 1.2, cacheRead: 0.06 },
+  "orvix/qwen-3.8-flash": { input: 0.16, output: 0.47, cacheRead: 0.016 },
+  "orvix/qwen-3.8-max": { input: 2, output: 6, cacheRead: 0.25 },
+  "orvix/kimi-k3": { input: 3, output: 15, cacheRead: 0.3 },
+};
+
+/**
+ * Resolves a model's per-token cost.
+ *
+ * Prefers live pricing from the Orvix model API when the provider discloses it;
+ * otherwise falls back to the best-effort upstream estimate for managed models
+ * (see {@link MANAGED_MODEL_UPSTREAM_COST}).
+ */
+export function orvixModelCost(id: string, discovered?: ModelCost): ModelCost | undefined {
+  return discovered ?? MANAGED_MODEL_UPSTREAM_COST[id.trim().toLowerCase()];
 }
 
 export function modelCostFromApi(value: unknown): ModelCost | undefined {

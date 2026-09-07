@@ -40,6 +40,7 @@ import {
   parseTransactionsPayload,
   parseUsageSummaryPayload,
   parseAccountBalancePayload,
+  parseImageCredits,
   parseTopUpsPayload,
   recordApiRequestUsage,
   type OrvixUsageSnapshot,
@@ -185,8 +186,15 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         throw new Error("Orvix usage requires a refreshed browser sign-in");
       }
       if (!balanceResponse.ok) throw await apiError("Unable to read Orvix balance", balanceResponse);
-      const account = parseAccountBalancePayload(await balanceResponse.json());
+      const balanceBody = await balanceResponse.json();
+      const account = parseAccountBalancePayload(balanceBody);
       this.mergeAndEmitUsage({ account, updatedAt: Date.now() });
+      // Image Credits ride on the same /balance payload: they are the
+      // grantsImage plans. A refresh only overwrites the balance when the
+      // payload carries image plans, so a gateway without the flag keeps the
+      // last known value instead of blanking it.
+      const imageCredits = parseImageCredits(balanceBody);
+      if (imageCredits) this.mergeAndEmitUsage({ imageCredits, updatedAt: Date.now() });
 
       let topUps;
       try {

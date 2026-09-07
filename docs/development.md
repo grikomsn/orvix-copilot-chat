@@ -12,6 +12,68 @@ npm run package
 
 Press F5 with the repository launch configuration to open an Extension Development Host. Add an Orvix provider entry from Copilot Chat's model management UI and use a project-scoped key with `ai:invoke`.
 
+## Architecture
+
+```mermaid
+flowchart TD
+  subgraph VSCODE["VS Code"]
+    UI[Chat UI] ---|prepareLanguageModelChat| PROV[OrvixProvider]
+    CMD[Commands<br/>orvixCopilot.*] --- PROV
+    TOOL[OrvixImageGenerationTool<br/>lm.registerTool] --- PROV
+    INLINE[InlineCompletions<br/>autocomplete/] --- PROV
+    SB[Status Bar<br/>renderUsageStatus] ---|onDidChangeUsage| SNAP[OrvixUsageSnapshot]
+  end
+
+  subgraph SECRET["SecretStorage"]
+    KEY[(API key<br/>orvixCopilot.apiKey)]
+    GW[(Gateway session<br/>orvixCopilot.gatewaySession)]
+  end
+
+  subgraph STATE["globalState (Memento)"]
+    CAT[(orvixCopilot.catalogs.v1)]
+    DEV[(models.dev metadata<br/>TTL 6h)]
+    USAGE[(orvixCopilot.usageSnapshots.v1)]
+  end
+
+  subgraph ORVIX["api.orvix.id"]
+    MODELS["GET /v1/models"]
+    CHAT["POST /v1/chat/completions<br/>SSE stream"]
+    IMG["POST /v1/images/generations"]
+  end
+
+  subgraph GATEWAY["gateway.orvix.id"]
+    BILLING["/billing, /usage/summary,<br/>/balance, /models/catalogue"]
+  end
+
+  AUTH[OrvixAuth]
+  PROV --- AUTH
+  AUTH --- KEY
+  AUTH --- GW
+  TOOL --- AUTH
+
+  PROV -->|"Bearer API key"| MODELS
+  PROV -->|"Bearer API key, stream:true"| CHAT
+  TOOL -->|"Bearer API key"| IMG
+  INLINE -->|"Bearer API key"| CHAT
+  PROV -->|"Bearer session token"| BILLING
+
+  MODELS --> ENRICH["enrichModelMetadata"]
+  ENRICH --- DEV
+  ENRICH --- CAT
+
+  CHAT --> PARSE["ChatCompletionStreamParser<br/>text / thinking / tool-call / usage"]
+  PARSE --- SNAP
+  SNAP --- USAGE
+  SNAP --- SB
+```
+
+Key properties:
+
+- Two credential principals: an API key (`orv-sk_live_…`) for inference and a browser gateway session for billing/usage only. Both live only in `SecretStorage`.
+- The live `/models` response is authoritative for that key and persisted per credential; cached or fallback models are served when a refresh fails.
+- Streaming is incremental: chunks become text, thinking, and tool-call progress events, and usage is captured into the snapshot that feeds the status bar.
+- Retries are pre-stream only, on network errors and HTTP 502/503/504, and never retry cancellation or a started stream.
+
 ## Provider invariants
 
 - Use `https://api.orvix.id/v1` with the extension's own user agent.

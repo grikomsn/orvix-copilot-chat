@@ -21,6 +21,16 @@ Provider-entry discovery uses `https://api.orvix.id/v1/models`. The live respons
 - Unprefixed model IDs use upstream credentials configured under Orvix Providers.
 - `orvix/auto` selects a managed model from the request shape; its cost varies with the selected model.
 
+## Model pricing
+
+Orvix does not disclose per-token rates on its model endpoint, so the extension reports **best-effort** pricing where available:
+
+- Live API pricing wins when the provider returns it (e.g. a BYOK model that advertises `pricing`).
+- Otherwise, for managed `orvix/*` models, the extension falls back to the upstream provider's published USD per-1M-token rates (sourced from [models.dev](https://models.dev)), which are **estimates, not Orvix billing**.
+- BYOK models without either source show no price rather than a guessed one.
+
+Pricing is surfaced in the model picker (`In: $… · Out: $… /1M tokens`), the usage tooltip, and the usage quick pick.
+
 ## Commands
 
 | Command | Purpose |
@@ -34,6 +44,7 @@ Provider-entry discovery uses `https://api.orvix.id/v1/models`. The live respons
 | **Orvix: Open API Keys** | Open the Orvix API Keys page |
 | **Orvix: Open Usage** | Open Orvix usage in the browser |
 | **Orvix: Show Usage and Credits** | Show credits, requests, spend, and session tracking, with refresh and page links |
+| **Orvix: Set Default Image Model** | Pick the image model used when the `orvixImages` tool is called without one |
 | **Orvix: Show Diagnostics** | Show endpoint, key state, and registered models |
 
 ## Settings
@@ -47,6 +58,7 @@ Provider-entry discovery uses `https://api.orvix.id/v1/models`. The live respons
 | `orvixCopilot.catalogCacheMinutes` | `5` | Live catalog refresh interval |
 | `orvixCopilot.debugLogging` | `false` | Log metadata without prompts or credentials |
 | `orvixCopilot.showUsageStatusBar` | `true` | Show Orvix credits and usage in the status bar |
+| `orvixCopilot.defaultImageModel` | `flux-2-pro` | Image model used by the `orvixImages` tool when the caller omits one |
 | `orvixCopilot.inlineSuggestions` | `false` | Experimental ghost-text inline completions while typing |
 | `orvixCopilot.inlineSuggestionsModel` | `orvix/deepseek-v4-pro` | Model used for inline completions at `reasoning_effort: none` |
 | `orvixCopilot.inlineSuggestionsChatInput` | `false` | Also offer suggestions inside the Copilot Chat prompt box |
@@ -93,13 +105,60 @@ With a session imported, **Orvix: Show Usage and Credits** also surfaces your
 **IDR account balance** and **active plans** (the rupiah balance is separate
 from the USD provider credits shown on `/billing`), plus your top-up history.
 
+## Image generation
+
+Orvix exposes a separate image-generation surface at
+`POST /v1/images/generations`, which spends **prepaid Image Credits** — never
+Ember tokens, wallet IDR, or Coding plan units. The extension exposes it as a
+Copilot Chat **language-model tool** named `orvixImages` (contributed as
+`orvix-copilot-chat_generateImage`).
+
+To use it, enable or reference `orvixImages` in agent mode (the same way you'd
+use a web-search tool). The tool takes a non-empty `prompt` and an optional
+`model` (an Orvix image model slug, with or without the `orvix/` prefix), plus
+optional `n`, `size`, `quality`, and `response_format`. When `model` is
+omitted — or names an unknown model — the **default image model** is used
+instead. The tool returns the hosted image URLs and the credits spent; image
+bytes are never inlined into the model context.
+
+### Default image model
+
+Run **Orvix: Set Default Image Model** (also in **Orvix: Manage Connection**)
+to pin the model used when a chat request omits one. The choice is stored in
+the `orvixCopilot.defaultImageModel` setting (`flux-2-pro` by default) and
+applies immediately to new tool calls. Pinning a default avoids failed
+generations when the calling model guesses an unavailable slug, and makes a
+cheaper model the path of least resistance.
+
+Image model catalogue (per-image credit cost):
+
+| Model | Credits |
+| --- | --- |
+| `flux-2-pro` | 7 |
+| `qwen-image-3.0` | 8 |
+| `gpt-image-2` | 11 |
+| `grok-imagine-image` | 12 |
+| `seedream-5.0-pro` | 19 |
+| `midjourney` | 22 (one 4-image grid; `n` is forced to 1) |
+| `gemini-3-pro-image` | 61 |
+
+`seedream-5.0-pro` always returns a single image, and `midjourney` always
+returns one grid. The remaining models accept `n` from 1 to 4 (default 1).
+
+Image Credits are tracked separately from USD credits. With a gateway session
+imported, **Orvix: Show Usage and Credits** shows your remaining Image Credits
+(the sum of remaining units across active `grantsImage` plans) in the status
+bar, tooltip, and usage quick pick. Live per-model credit costs come from the
+gateway `models/catalogue`; when no session is available the extension falls
+back to the bundled table above.
+
 ## Troubleshooting
 
 - **401:** verify the complete key starts with `orv-sk_live_` and includes `ai:invoke`.
 - **401 on Usage/Credits:** the gateway needs a browser session; run **Orvix: Import Usage Session**.
-- **402:** add Orvix Credits for managed `orvix/*` models.
+- **402:** add Orvix Credits for managed `orvix/*` models, or buy Image Credits for image generation.
 - **403:** the key is not allowed to use the selected funding source.
-- **429:** the key's rate or monthly spend limit was reached.
+- **429:** the key's rate or monthly spend limit was reached (some image models, e.g. `qwen-image-3.0`, publish a low soft RPM).
 - **No BYOK route:** configure that provider under [Orvix Providers](https://platform.orvix.id/providers), or select a managed `orvix/*` model.
 - **Catalog temporarily unavailable:** the extension keeps the last complete per-key catalog and retries discovery later.
 

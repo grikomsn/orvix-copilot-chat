@@ -166,6 +166,9 @@ export function enrichModelMetadata(
     reasoningEffort: metadata.reasoningOptions?.includes("low") === true || model.reasoningEffort,
     description: model.description ?? metadata.description,
     releaseDate: model.releaseDate ?? metadata.releaseDate,
+    // Best-effort upstream cost: live API pricing wins; otherwise a managed
+    // model's bundled estimate, then any models.dev cost for a BYOK model.
+    cost: model.cost ?? metadata.cost,
   };
 }
 

@@ -5,6 +5,10 @@ import { CONFIG_SECTION, DEFAULT_INLINE_MODEL, INLINE_SUGGESTIONS_MODEL_SETTING 
 import { inlineModelChoices } from "../autocomplete/models";
 import { OrvixAuth } from "../auth/auth";
 import { messageOf } from "../errors";
+import {
+  DEFAULT_IMAGE_MODEL,
+  IMAGE_MODEL_CREDIT_COSTS,
+} from "../images/client";
 import { API_BASE, OrvixProvider } from "../provider";
 import { formatUsageRows } from "../usage/domain";
 import { toUsageQuickPickItem, type UsageQuickPickItem } from "../usage/presentation";
@@ -12,6 +16,20 @@ import { toUsageQuickPickItem, type UsageQuickPickItem } from "../usage/presenta
 const API_KEYS_URL = "https://platform.orvix.id/api-keys";
 const USAGE_URL = "https://platform.orvix.id/usage";
 const BILLING_URL = "https://platform.orvix.id/billing";
+
+/** Settings key holding the user's default image model. */
+export const DEFAULT_IMAGE_MODEL_SETTING = "defaultImageModel";
+
+/** Short per-model notes shown in the default-image-model picker. */
+const IMAGE_MODEL_NOTES: Readonly<Record<string, string>> = {
+  "flux-2-pro": "Black Forest Labs",
+  "qwen-image-3.0": "Qwen · low soft rate limit",
+  "gpt-image-2": "OpenAI",
+  "grok-imagine-image": "Grok Imagine",
+  "seedream-5.0-pro": "ByteDance · always one image",
+  "midjourney": "One 4-image grid",
+  "gemini-3-pro-image": "Google",
+};
 
 export function registerCommands(
   auth: OrvixAuth,
@@ -29,6 +47,7 @@ export function registerCommands(
     vscode.commands.registerCommand("orvixCopilot.setInlineSuggestionsModel", () => setInlineSuggestionsModel()),
     vscode.commands.registerCommand("orvixCopilot.openUsage", () => openUsage()),
     vscode.commands.registerCommand("orvixCopilot.showUsage", () => showUsage(provider, output, usageStatus)),
+    vscode.commands.registerCommand("orvixCopilot.setDefaultImageModel", () => setDefaultImageModel(output)),
     vscode.commands.registerCommand("orvixCopilot.testConnection", () => testConnection(provider, output)),
     vscode.commands.registerCommand("orvixCopilot.openApiKeys", () => openApiKeys()),
     vscode.commands.registerCommand("orvixCopilot.diagnostics", () => diagnostics(auth, output)),
@@ -47,6 +66,7 @@ async function manage(
         { label: "$(check) Test Orvix inference", action: "test" },
         { label: "$(refresh) Refresh available models", action: "refresh" },
         { label: "$(zap) Set inline suggestions model", action: "inlineModel" },
+        { label: "$(device-camera) Set default image model", action: "imageModel" },
         { label: "$(credit-card) Show usage and credits", action: "usage" },
         { label: "$(graph) Open Orvix usage", action: "open-usage" },
         { label: "$(account) Import usage session", action: "session" },
@@ -68,6 +88,7 @@ async function manage(
   if (picked.action === "configure") await configureApiKey(provider, output);
   else if (picked.action === "refresh") await refreshModels(provider);
   else if (picked.action === "inlineModel") await setInlineSuggestionsModel();
+  else if (picked.action === "imageModel") await setDefaultImageModel(output);
   else if (picked.action === "test") await testConnection(provider, output);
   else if (picked.action === "usage") await showUsage(provider, output, usageStatus);
   else if (picked.action === "session") await configureGatewaySession(provider, output);
@@ -218,6 +239,39 @@ async function setInlineSuggestionsModel(): Promise<void> {
   }
   await configuration.update(INLINE_SUGGESTIONS_MODEL_SETTING, picked.action, vscode.ConfigurationTarget.Global);
   void vscode.window.showInformationMessage(`Orvix inline suggestions model set to ${picked.action}. Applies on the next keystroke.`);
+}
+
+/** Quick-pick entry for the default image model picker. */
+interface ImageModelPickItem extends vscode.QuickPickItem {
+  readonly model?: string;
+}
+
+/**
+ * Opens the default image model picker for the `orvixImages` tool.
+ *
+ * The selection is stored under `orvixCopilot.defaultImageModel` and used
+ * whenever the calling model omits `model` from a tool call, so users can
+ * pin a preferred (or cheaper) image model instead of relying on the calling
+ * model to choose.
+ */
+export async function setDefaultImageModel(output?: vscode.OutputChannel): Promise<void> {
+  const configuration = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  const current = configuration.get<string>(DEFAULT_IMAGE_MODEL_SETTING) ?? DEFAULT_IMAGE_MODEL;
+  const items: ImageModelPickItem[] = Object.entries(IMAGE_MODEL_CREDIT_COSTS).map(([model, credits]) => ({
+    label: `$(${model === current ? "check" : "device-camera"}) ${model}`,
+    description: `${credits} Image ${credits === 1 ? "Credit" : "Credits"} per image`,
+    detail: IMAGE_MODEL_NOTES[model],
+    ...(model === current ? { picked: true } : {}),
+    model,
+  }));
+  const picked = await vscode.window.showQuickPick(items, {
+    title: "Orvix — Set Default Image Model",
+    placeHolder: `Current: ${current} — used when a chat request omits the model`,
+  });
+  if (!picked?.model) return;
+  await configuration.update(DEFAULT_IMAGE_MODEL_SETTING, picked.model, vscode.ConfigurationTarget.Global);
+  output?.appendLine(`[images] default image model set to ${picked.model}`);
+  void vscode.window.showInformationMessage(`Orvix default image model set to ${picked.model}.`);
 }
 
 async function testConnection(provider: OrvixProvider, output: vscode.OutputChannel): Promise<void> {

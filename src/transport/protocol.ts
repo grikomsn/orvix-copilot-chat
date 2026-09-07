@@ -3,10 +3,11 @@ export const API_BASE = "https://api.orvix.id/v1";
 /** Host of the Orvix gateway used for billing and usage endpoints. */
 export const GATEWAY_BASE = "https://gateway.orvix.id";
 
-/** Fixed API endpoints for model discovery and chat completions. */
+/** Fixed API endpoints for model discovery, chat completions, and images. */
 export const ORVIX_ENDPOINTS = {
   models: `${API_BASE}/models`,
   chat: `${API_BASE}/chat/completions`,
+  images: `${API_BASE}/images/generations`,
 } as const;
 
 /** Fixed gateway endpoints for credits, usage, and account balance data. */
@@ -16,6 +17,7 @@ export const ORVIX_GATEWAY_ENDPOINTS = {
   usageSummary: `${GATEWAY_BASE}/usage/summary`,
   balance: `${GATEWAY_BASE}/balance`,
   topUps: `${GATEWAY_BASE}/balance/topups`,
+  imageCatalogue: `${GATEWAY_BASE}/models/catalogue`,
 } as const;
 
 /**

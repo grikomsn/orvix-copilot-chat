@@ -3,6 +3,7 @@ import { registerInlineCompletions } from "./autocomplete";
 import { OrvixAuth } from "./auth/auth";
 import { registerCommands } from "./commands/commands";
 import { messageOf } from "./errors";
+import { OrvixImageGenerationTool, ORVIX_IMAGE_TOOL_NAME } from "./images/vscode-tool";
 import { OrvixProvider } from "./provider";
 import { extensionUserAgent } from "./transport/protocol";
 import type { OrvixUsageSnapshot } from "./usage/domain";
@@ -51,6 +52,16 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.lm.registerLanguageModelChatProvider("orvix", provider),
+    vscode.lm.registerTool(
+      ORVIX_IMAGE_TOOL_NAME,
+      new OrvixImageGenerationTool({
+        resolveApiKey: () => auth.getApiKey(),
+        resolveDefaultModel: () =>
+          vscode.workspace.getConfiguration("orvixCopilot").get<string>("defaultImageModel") ?? undefined,
+        userAgent: extensionUserAgent(context.extension.packageJSON.version, vscode.version),
+        output,
+      }),
+    ),
     ...registerCommands(auth, provider, output, usageStatus),
     registerInlineCompletions(context, {
       resolveApiKey: () => auth.getApiKey(),

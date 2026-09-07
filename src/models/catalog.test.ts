@@ -72,12 +72,13 @@ test("provides documented fallback limits", () => {
     imageInput: true,
     toolCalling: true,
     reasoningEffort: true,
-    cost: undefined,
+    cost: { input: 1.25, output: 4.25, cacheRead: 0.15 },
   });
   assert.equal(formatTokenLimit(1_000_000), "1M");
   assert.equal(formatTokenLimit(262_144), "256K");
   assert.equal(getModelMetadata("orvix/auto").maxOutputTokens, 16_384);
   assert.equal(getModelMetadata("orvix/auto").toolCalling, false);
+  assert.equal(getModelMetadata("orvix/auto").cost, undefined);
   assert.equal(getModelMetadata("orvix/deepseek-v4-flash").maxOutputTokens, 384_000);
 });
 
@@ -91,7 +92,7 @@ test("mirrors live capabilities for newly added managed models", () => {
     imageInput: false,
     toolCalling: true,
     reasoningEffort: true,
-    cost: undefined,
+    cost: { input: 1.4, output: 4.4, cacheRead: 0.26 },
   });
   assert.equal(getModelMetadata("orvix/gpt-5.6-sol").imageInput, true);
   assert.equal(getModelMetadata("orvix/gpt-5.6-sol").maxOutputTokens, 128_000);
@@ -280,7 +281,12 @@ test("uses only live pricing because Orvix managed rates are not in the model AP
   assert.deepEqual(live.cost, { input: 1, cacheRead: 0.2, output: 2 });
 
   const [fallback] = orderModelMetadata([{ id: "orvix/example" }]);
+  // An unknown model has no upstream estimate, so it stays undefined.
   assert.equal(fallback.cost, undefined);
+
+  // A managed model falls back to its bundled best-effort upstream estimate.
+  const [managed] = orderModelMetadata([{ id: "orvix/gpt-5.6-sol" }]);
+  assert.deepEqual(managed.cost, { input: 4, output: 20, cacheRead: 0.4 });
 });
 
 test("falls back only when discovery returns no chat models", () => {

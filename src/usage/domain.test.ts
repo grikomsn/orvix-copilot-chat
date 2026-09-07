@@ -4,6 +4,7 @@ import {
   formatCompactTokens,
   formatCreditsUsd,
   formatIdr,
+  formatImageCredits,
   formatUsageRows,
   formatUsageStatusBar,
   formatUsageTooltip,
@@ -11,6 +12,7 @@ import {
   mergeUsageSnapshot,
   parseAccountBalancePayload,
   parseBillingPayload,
+  parseImageCredits,
   parseTopUpsPayload,
   parseTransactionsPayload,
   parseUsageSummaryPayload,
@@ -373,4 +375,88 @@ test("surfaces rupiah balance and active plans in status bar and rows", () => {
   const rows = formatUsageRows(snapshot);
   assert.ok(rows.some((row) => row.kind === "balance" && row.label.includes("Rp10.000")));
   assert.ok(rows.some((row) => row.kind === "plan" && row.label.includes("Flame")));
+});
+
+test("extracts image credits from the balance payload's grantsImage plans", () => {
+  const payload = {
+    success: true,
+    data: {
+      balanceIdr: 0,
+      plans: [
+        {
+          id: "p1",
+          planName: "Image Credits 100",
+          unitsTotal: 100,
+          unitsRemaining: 93,
+          expiresAt: "2027-09-07T07:46:43.598Z",
+          grantsImage: true,
+        },
+        { id: "p2", planName: "Flame", unitsTotal: 12_000_000, unitsRemaining: 11_693_634, grantsImage: false },
+      ],
+    },
+  };
+  assert.deepEqual(parseImageCredits(payload), {
+    remaining: 93,
+    plans: 1,
+    nextExpiryAt: "2027-09-07T07:46:43.598Z",
+  });
+});
+
+test("sums multiple image plans and picks the soonest expiry", () => {
+  const balance = parseImageCredits({
+    data: {
+      plans: [
+        { id: "a", planName: "Image Credits 100", unitsRemaining: 40, grantsImage: true, expiresAt: "2027-06-01T00:00:00Z" },
+        { id: "b", planName: "Image Credits 100", unitsRemaining: 60, grantsImage: true, expiresAt: "2026-12-01T00:00:00Z" },
+      ],
+    },
+  });
+  assert.deepEqual(balance, {
+    remaining: 100,
+    plans: 2,
+    nextExpiryAt: "2026-12-01T00:00:00Z",
+  });
+});
+
+test("treats missing or image-free balances as no image credits", () => {
+  assert.equal(parseImageCredits(undefined), undefined);
+  assert.equal(parseImageCredits("nope"), undefined);
+  assert.equal(parseImageCredits({ balanceIdr: 0 }), undefined);
+  assert.equal(
+    parseImageCredits({ data: { plans: [{ id: "p", planName: "Flame", unitsRemaining: 5, grantsImage: false }] } }),
+    undefined,
+  );
+  assert.deepEqual(parseImageCredits({ data: { plans: [{ id: "p", planName: "Image Credits", grantsImage: true }] } }), {
+    remaining: 0,
+    plans: 1,
+  });
+});
+
+test("merges image credits into the snapshot without clobbering other fields", () => {
+  const merged = mergeUsageSnapshot(
+    { credits: { availableMicrousd: 250_000 }, imageCredits: { remaining: 93, plans: 1 } },
+    {
+      imageCredits: { remaining: 86, plans: 1, updatedAt: "2026-09-07T08:00:00Z" },
+      summary: { requests: 10 },
+    },
+  );
+  assert.deepEqual(merged.imageCredits, { remaining: 86, plans: 1, updatedAt: "2026-09-07T08:00:00Z" });
+  assert.deepEqual(merged.credits, { availableMicrousd: 250_000 });
+  assert.deepEqual(merged.summary, { requests: 10 });
+  // An update without image credits keeps the existing value.
+  const untouched = mergeUsageSnapshot({ imageCredits: { remaining: 93, plans: 1 } }, { updatedAt: 9 });
+  assert.deepEqual(untouched.imageCredits, { remaining: 93, plans: 1 });
+});
+
+test("renders image credits in the tooltip and quick-pick rows", () => {
+  const snapshot = {
+    imageCredits: { remaining: 93, plans: 1, nextExpiryAt: "2027-09-07T07:46:43.598Z" },
+  };
+  const tooltip = formatUsageTooltip(snapshot);
+  assert.match(tooltip, /Image Credits: 93 credits/);
+  assert.match(tooltip, /separate from USD credits/);
+  const rows = formatUsageRows(snapshot);
+  assert.ok(rows.some((row) => row.kind === "imageCredits" && row.label.includes("93 credits")));
+  assert.match(formatImageCredits(1), /^1 credit$/);
+  assert.match(formatImageCredits(undefined), /—/);
 });

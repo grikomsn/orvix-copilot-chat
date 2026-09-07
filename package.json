@@ -66,6 +66,10 @@
         "title": "Orvix: Show Usage and Credits"
       },
       {
+        "command": "orvixCopilot.setDefaultImageModel",
+        "title": "Orvix: Set Default Image Model"
+      },
+      {
         "command": "orvixCopilot.configureGatewaySession",
         "title": "Orvix: Import Usage Session"
       },
@@ -195,6 +199,29 @@
           "type": "boolean",
           "default": true,
           "description": "Show Orvix credits and usage in the status bar. Click to open the usage quick pick."
+        },
+        "orvixCopilot.defaultImageModel": {
+          "type": "string",
+          "default": "flux-2-pro",
+          "enum": [
+            "flux-2-pro",
+            "qwen-image-3.0",
+            "gpt-image-2",
+            "grok-imagine-image",
+            "seedream-5.0-pro",
+            "midjourney",
+            "gemini-3-pro-image"
+          ],
+          "enumDescriptions": [
+            "Black Forest Labs · 7 Image Credits per image",
+            "Qwen · 8 credits · low soft rate limit",
+            "OpenAI · 11 credits",
+            "Grok Imagine · 12 credits",
+            "ByteDance · 19 credits · always one image",
+            "Midjourney · 22 credits · one 4-image grid",
+            "Google · 61 credits"
+          ],
+          "description": "Image model used by the orvixImages tool when the caller does not pick one. Configured via Orvix: Set Default Image Model."
         }
       }
     },
@@ -215,6 +242,61 @@
               "secret": true
             }
           }
+        }
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "orvix-copilot-chat_generateImage",
+        "tags": [
+          "orvix",
+          "image",
+          "image-generation"
+        ],
+        "toolReferenceName": "orvixImages",
+        "displayName": "Orvix Image Generation",
+        "modelDescription": "Generate images from a text prompt with Orvix image models (flux-2-pro, qwen-image-3.0, gpt-image-2, grok-imagine-image, midjourney, seedream-5.0-pro, gemini-3-pro-image). Each image debits prepaid Orvix Image Credits; the tool returns the hosted image URLs and the credits spent. Requires an Orvix API key.",
+        "userDescription": "Generate images with Orvix image models using prepaid Image Credits.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(device-camera)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string",
+              "description": "Orvix image model slug, with or without the orvix/ prefix. One of: flux-2-pro (7 credits), qwen-image-3.0 (8), gpt-image-2 (11), grok-imagine-image (12), seedream-5.0-pro (19), midjourney (22), gemini-3-pro-image (61). Omit to use the user's configured default image model."
+            },
+            "prompt": {
+              "type": "string",
+              "description": "What to generate. Non-empty."
+            },
+            "n": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4,
+              "description": "Number of images to generate (default 1). Midjourney always returns one 4-image grid and Seedream 5.0 Pro always returns one image."
+            },
+            "size": {
+              "type": "string",
+              "description": "Pixel size when the upstream supports it, e.g. 1024x1024 for GPT/Flux, 2048x2048 for Seedream, 1K/2K/4K for Gemini."
+            },
+            "quality": {
+              "type": "string",
+              "description": "Quality hint passed through when the upstream accepts it."
+            },
+            "response_format": {
+              "type": "string",
+              "enum": [
+                "url",
+                "b64_json"
+              ],
+              "description": "Response format when the upstream supports it; url is recommended."
+            }
+          },
+          "required": [
+            "prompt"
+          ],
+          "additionalProperties": false
         }
       }
     ]

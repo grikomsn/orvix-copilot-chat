@@ -12,6 +12,8 @@ export interface ModelsDevModelMetadata {
   readonly reasoning?: boolean;
   readonly reasoningOptions?: readonly string[];
   readonly releaseDate?: string;
+  /** Best-effort upstream USD per-1M-token cost. @see {@link ModelCost} */
+  readonly cost?: { readonly input: number; readonly output: number; readonly cacheRead?: number };
 }
 export interface ModelsDevSnapshot {
   readonly fetchedAt: number;
@@ -124,6 +126,7 @@ function normalizeModel(key: string, value: unknown): ModelsDevModelMetadata | u
   const modalities = record(raw.modalities);
   const input = strings(modalities?.input);
   const options = reasoningOptions(raw.reasoning_options);
+  const cost = record(raw.cost);
   return {
     id,
     ...(text(raw.description) ? { description: text(raw.description) } : {}),
@@ -134,6 +137,7 @@ function normalizeModel(key: string, value: unknown): ModelsDevModelMetadata | u
     ...(typeof raw.reasoning === "boolean" ? { reasoning: raw.reasoning } : {}),
     ...(options ? { reasoningOptions: options } : {}),
     ...(text(raw.release_date) ? { releaseDate: text(raw.release_date) } : {}),
+    ...(normalizeCost(cost) ? { cost: normalizeCost(cost) } : {}),
   };
 }
 
@@ -148,6 +152,9 @@ function normalizeCachedModels(models: Record<string, unknown>, fetchedAt: numbe
 }
 function cachedToRaw(value: unknown): unknown {
   const raw = record(value);
+  const storedCost = raw && record(raw.cost)
+    ? (raw.cost as { input?: unknown; output?: unknown; cacheRead?: unknown })
+    : undefined;
   return raw
     ? {
         id: raw.id,
@@ -162,8 +169,30 @@ function cachedToRaw(value: unknown): unknown {
           ? [{ type: "effort", values: raw.reasoningOptions }]
           : undefined,
         release_date: raw.releaseDate,
+        // The persisted snapshot stores normalized cost keys; translate back to
+        // the upstream `cache_read` shape so re-normalization is lossless.
+        cost: storedCost
+          ? {
+              input: storedCost.input,
+              output: storedCost.output,
+              ...(typeof storedCost.cacheRead === "number" ? { cache_read: storedCost.cacheRead } : {}),
+            }
+          : raw.cost,
       }
     : value;
+}
+function normalizeCost(cost: Record<string, unknown> | undefined): ModelsDevModelMetadata["cost"] | undefined {
+  if (!cost) return undefined;
+  // Costs are decimal USD per 1M tokens, so preserve fractions (unlike the
+  // integer token-limit parser which floors).
+  const input = positiveNumber(cost.input);
+  const output = positiveNumber(cost.output);
+  if (input === undefined || output === undefined) return undefined;
+  const cacheRead = positiveNumber(cost.cache_read);
+  return { input, output, ...(cacheRead === undefined ? {} : { cacheRead }) };
+}
+function positiveNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 function reasoningOptions(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
