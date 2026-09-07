@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+
+### Minor Changes
+
+- ecc25f2: Enrich model metadata with best-effort per-token pricing. Orvix does not disclose per-token rates on its model endpoint, so the extension now reports pricing from live API data when a provider advertises it, otherwise falling back to the upstream provider's published USD per-1M-token rates (sourced from models.dev) for managed `orvix/*` models. BYOK models without either source show no price rather than a guessed one. Pricing surfaces in the model picker, usage tooltip, and usage quick pick. Models.dev metadata now round-trips cost through the persisted cache, and unknown managed models no longer get a fabricated price.
+- ecc25f2: Add an image-generation language-model tool (`orvixImages`, contributed as `orvix-copilot-chat_generateImage`) that calls the Orvix `POST /v1/images/generations` endpoint and spends prepaid Image Credits. It supports the image catalogue models (flux-2-pro, qwen-image-3.0, gpt-image-2, grok-imagine-image, seedream-5.0-pro, midjourney, gemini-3-pro-image), returns hosted image URLs plus the credits spent, and never inlines image bytes into the model context. Image Credits are now tracked separately from USD credits: with a gateway session imported, the status bar, tooltip, and usage quick pick show the remaining Image Credits summed from active `grantsImage` plans, and live per-model credit costs come from the gateway `models/catalogue` (with a bundled fallback table when no session is available).
+- ecc25f2: Harden the `orvixImages` tool and add a configurable default image model. Space out pre-stream image retries with the shared backoff policy (honoring `Retry-After`), bound tool invocations to a 120-second timeout, and return actionable error guidance for rate limits and Orvix-side 502 outages. `model` is now optional in the tool schema: omitted or unknown models fall back to the new `orvixCopilot.defaultImageModel` setting (default `flux-2-pro`), configurable via the new **Orvix: Set Default Image Model** command and the Manage Connection menu, so a calling model's bad slug guess can no longer block generation.
+
 ## 0.5.0
 
 ### Minor Changes
