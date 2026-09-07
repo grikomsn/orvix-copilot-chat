@@ -128,6 +128,17 @@ export function resolveMaxOutputTokens(configured: number, advertised: number): 
   return configured > 0 ? Math.min(configured, advertised) : advertised;
 }
 
+/**
+ * The usable input window after reserving the model's output budget. VS Code
+ * treats `maxInputTokens` as the context it compacts against, so input plus
+ * output must sum to the model's context window.
+ */
+export function resolveMaxInputTokens(
+  metadata: Pick<OrvixModelMetadata, "contextLength" | "maxOutputTokens">,
+): number {
+  return advertisedModelLimits(metadata).maxInputTokens;
+}
+
 export function orderModelMetadata(models: readonly OrvixApiModel[]): OrvixModelMetadata[] {
   const discovered = new Map<string, OrvixModelMetadata>();
   for (const raw of models) {
@@ -197,7 +208,7 @@ function modelMetadataFromApi(raw: OrvixApiModel): OrvixModelMetadata | undefine
         : fallback.name,
     version: typeof raw.version === "string" && raw.version ? raw.version : fallback.version,
     contextLength:
-      positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len) ?? fallback.contextLength,
+      liveContextLength(raw) ?? fallback.contextLength,
     maxOutputTokens:
       positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens ?? capabilities?.max_output_tokens) ??
       fallback.maxOutputTokens,
@@ -265,6 +276,11 @@ function positiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
+/** A positive live shared window is authoritative, independent of output capability. */
+function liveContextLength(raw: OrvixApiModel): number | undefined {
+  return positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len);
+}
+
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -282,4 +298,16 @@ function unixDate(value: unknown): string | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? new Date(value * 1_000).toISOString().slice(0, 10)
     : undefined;
+}
+
+/** Separate output capability from the response budget reserved by the chat UI. */
+export function advertisedModelLimits(
+  model: Pick<OrvixModelMetadata, "contextLength" | "maxOutputTokens">,
+  configuredOutput = 0,
+): { maxInputTokens: number; maxOutputTokens: number } {
+  const requested = Number.isFinite(configuredOutput) && configuredOutput > 0
+    ? Math.floor(configuredOutput)
+    : 32_768;
+  const output = Math.max(1, Math.min(model.maxOutputTokens, requested, model.contextLength - 1));
+  return { maxInputTokens: Math.max(1, model.contextLength - output), maxOutputTokens: output };
 }

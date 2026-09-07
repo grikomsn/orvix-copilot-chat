@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  advertisedModelLimits,
   FALLBACK_MODELS,
   enrichModelMetadata,
   formatModelName,
@@ -9,6 +10,7 @@ import {
   isOrvixChatModel,
   orderModelMetadata,
   orderModels,
+  resolveMaxInputTokens,
   resolveMaxOutputTokens,
 } from "./catalog";
 
@@ -292,4 +294,36 @@ test("uses the selected catalog limit for default and explicit output settings",
   assert.equal(resolveMaxOutputTokens(0, 65_536), 65_536);
   assert.equal(resolveMaxOutputTokens(100_000, 65_536), 65_536);
   assert.equal(resolveMaxOutputTokens(32_000, 65_536), 32_000);
+});
+
+test("honors live shared windows independently of output capability", () => {
+  for (const output of [100_000, 200_000]) {
+    const [model] = orderModelMetadata([{ id: "orvix/example", context_length: 100_000, max_output_tokens: output }]);
+    assert.equal(model.contextLength, 100_000);
+    assert.equal(resolveMaxInputTokens(model), 67_232);
+  }
+  const [model] = orderModelMetadata([{ id: "orvix/deepseek-v4-flash", context_length: 100_000 }]);
+  assert.equal(model.contextLength, 100_000);
+  assert.equal(resolveMaxInputTokens(model), 67_232);
+});
+
+test("reserves a usable input budget even when output capability fills the window", () => {
+  for (const contextLength of [229_376, 262_144, 450_000, 1_048_576]) {
+    const limits = advertisedModelLimits({ contextLength, maxOutputTokens: contextLength });
+    assert.equal(limits.maxInputTokens, contextLength - 32_768);
+    assert.equal(limits.maxOutputTokens, 32_768);
+    const configured = advertisedModelLimits({ contextLength, maxOutputTokens: 131_072 }, 16_384);
+    assert.equal(configured.maxInputTokens + configured.maxOutputTokens, contextLength);
+    assert.equal(configured.maxOutputTokens, 16_384);
+  }
+});
+
+test("every supported fallback has room for conversation and a bounded response", () => {
+  for (const id of FALLBACK_MODELS) {
+    const metadata = getModelMetadata(id);
+    const limits = advertisedModelLimits(metadata);
+    assert.ok(limits.maxInputTokens > 32_768, id);
+    assert.ok(limits.maxOutputTokens > 0 && limits.maxOutputTokens <= 32_768, id);
+    assert.equal(limits.maxInputTokens + limits.maxOutputTokens, metadata.contextLength, id);
+  }
 });

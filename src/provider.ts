@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { OrvixAuth, type GatewaySession } from "./auth/auth";
 import { messageOf } from "./errors";
 import {
+  advertisedModelLimits,
   FALLBACK_MODEL_METADATA,
   FALLBACK_MODELS,
   formatTokenLimit,
@@ -14,7 +15,10 @@ import {
 import { modelPricingFields } from "./models/pricing";
 import {
   applyReasoningEffort,
-  buildThinkingSchema,
+  buildModelConfigurationSchema,
+  contextSizeOptions,
+  resolveContextCap,
+  resolveContextSize,
   resolveEffortValue,
   type ReasoningEffort,
 } from "./models/options";
@@ -28,6 +32,7 @@ import { apiKeyFromConfiguration, credentialRefForApiKey, qualifiedModelId } fro
 import { isTransientNetworkError, isTransientServerError, retryDelayMs } from "./provider/retry";
 import { messageToText } from "./provider/messages";
 import { buildRequest } from "./provider/request";
+import { trimHistoryToFit } from "./provider/history-trim";
 import { reportEvent } from "./provider/response";
 import {
   mergeUsageSnapshot,
@@ -277,6 +282,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
 
     return this.catalogFor(credentialRef).map((metadata) => {
       const pricing = modelPricingFields(metadata.cost);
+      const limits = advertisedModelLimits(metadata, this.configuration.get("maxOutputTokens", 0));
       return {
         id: qualifiedModelId(credentialRef, metadata.id),
         rawModelId: metadata.id,
@@ -296,15 +302,14 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         )} max output${metadata.imageInput ? " · image input" : " · text input"}${
           metadata.releaseDate ? ` · released ${metadata.releaseDate}` : ""
         }${pricing ? ` · ${pricing.pricing}` : ""}${metadata.description ? `\n${metadata.description}` : ""}`,
-        maxInputTokens: metadata.contextLength,
-        maxOutputTokens: metadata.maxOutputTokens,
+        ...limits,
         isUserSelectable: true,
         ...(credentialRef !== "legacy" ? { isBYOK: true } : {}),
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure Orvix API key" } }
           : {}),
-        ...(buildThinkingSchema(metadata)
-          ? { configurationSchema: buildThinkingSchema(metadata) }
+        ...(buildModelConfigurationSchema(metadata, contextSizeOptions(limits.maxInputTokens))
+          ? { configurationSchema: buildModelConfigurationSchema(metadata, contextSizeOptions(limits.maxInputTokens)) }
           : {}),
         capabilities: {
           imageInput: metadata.imageInput,
@@ -337,6 +342,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       this.configuration.get("maxOutputTokens", 0),
       Boolean(model.capabilities?.imageInput),
       model.reasoningEffort,
+      resolveContextCap(resolveContextSize(options.modelConfiguration), model.maxInputTokens),
     );
     const controller = new AbortController();
     const cancellation = token.onCancellationRequested(() => controller.abort());
