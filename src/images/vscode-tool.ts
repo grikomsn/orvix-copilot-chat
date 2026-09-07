@@ -14,18 +14,18 @@ import * as vscode from "vscode";
 import { ImageGenerationClient, ImageGenerationError } from "./client";
 import {
   coerceImageInput,
+  fetchInlineImage,
   formatImageResult,
-  imageCreditsPayload,
   imageInvocationMessage,
   imageToolCredits,
+  inlineImageMime,
+  inlineImageSources,
   type ImageToolInput,
+  type InlineImageSource,
 } from "./tool-logic";
 
 /** VS Code tool name; the `toolReferenceName` in package.json is `orvixImages`. */
 export const ORVIX_IMAGE_TOOL_NAME = "orvix-copilot-chat_generateImage";
-
-/** Binds an image tool result so the credits spent are visible in context. */
-export const IMAGE_CREDITS_MIME_TYPE = "application/vnd.orvix.image-credits";
 
 export interface ImageToolDependencies {
   /** Resolves the API key for inference requests; rejects when unconfigured. */
@@ -76,13 +76,37 @@ export class OrvixImageGenerationTool implements vscode.LanguageModelTool<ImageT
       this.dependencies.output?.appendLine(
         `[images] model=${result.model || coerced.model} images=${result.data.length} credits=${creditsSpent}`,
       );
-      return new vscode.LanguageModelToolResult([
+      // Unconditionally inline every generated image into the tool result:
+      // VS Code renders image data parts in the thread, and vision-capable
+      // chat models receive the bytes on later turns. Non-vision models
+      // degrade the parts to placeholders at the conversion layer, and the
+      // URLs stay in the text part either way. Inlining is best-effort —
+      // a fetch failure only loses the preview, never the result.
+      const inline = await Promise.all(
+        inlineImageSources(result.data).map(async (source) => {
+          if (!source) return undefined;
+          if (source.source === "b64") return { bytes: source.bytes, mimeType: source.mimeType };
+          const fetched = await fetchInlineImage(source.url, this.dependencies.fetcher ?? fetch);
+          return fetched
+            ? { bytes: fetched.bytes, mimeType: inlineImageMime(fetched.contentType) }
+            : undefined;
+        }),
+      );
+      const images: InlineImageSource[] = inline.filter(
+        (image): image is InlineImageSource => image !== undefined,
+      );
+      const parts: (vscode.LanguageModelTextPart | vscode.LanguageModelDataPart)[] = [
         new vscode.LanguageModelTextPart(formatImageResult(result, creditsSpent)),
-        new vscode.LanguageModelDataPart(
-          new TextEncoder().encode(JSON.stringify(imageCreditsPayload(result, creditsSpent, coerced.model))),
-          IMAGE_CREDITS_MIME_TYPE,
+        ...images.map(
+          (image) => new vscode.LanguageModelDataPart(image.bytes, image.mimeType),
         ),
-      ]);
+      ];
+      if (images.length < result.data.length) {
+        this.dependencies.output?.appendLine(
+          `[images] inlined ${images.length}/${result.data.length} (fetch/size failures skipped)`,
+        );
+      }
+      return new vscode.LanguageModelToolResult(parts);
     } finally {
       cancellation.dispose();
     }

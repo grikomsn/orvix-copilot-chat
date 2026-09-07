@@ -44,6 +44,7 @@ function convertMessage(message: vscode.LanguageModelChatRequestMessage, imageIn
   const images: ApiContentPart[] = [];
   const toolCalls: ApiToolCall[] = [];
   const results: ApiMessage[] = [];
+  const inlineToolImages: ApiContentPart[][] = [];
   for (const part of message.content) {
     if (part instanceof vscode.LanguageModelTextPart) text.push(part.value);
     else if (part instanceof vscode.LanguageModelToolCallPart)
@@ -55,12 +56,37 @@ function convertMessage(message: vscode.LanguageModelChatRequestMessage, imageIn
           arguments: JSON.stringify(part.input ?? {}),
         },
       });
-    else if (part instanceof vscode.LanguageModelToolResultPart)
+    else if (part instanceof vscode.LanguageModelToolResultPart) {
+      const resultText: string[] = [];
+      const resultImages: ApiContentPart[] = [];
+      for (const resultPart of part.content) {
+        if (resultPart instanceof vscode.LanguageModelTextPart) resultText.push(resultPart.value);
+        else if (
+          resultPart instanceof vscode.LanguageModelDataPart
+          && resultPart.mimeType.startsWith("image/")
+        ) {
+          // Tool-result images (e.g. from the image-generation tool) flow to
+          // vision-capable models so they can iterate on their own output;
+          // non-vision models degrade them to a placeholder below.
+          if (imageInput) {
+            resultImages.push({
+              type: "image_url",
+              image_url: {
+                url: `data:${resultPart.mimeType};base64,${Buffer.from(resultPart.data).toString("base64")}`,
+              },
+            });
+          } else {
+            resultText.push(`[${resultPart.mimeType} data omitted]`);
+          }
+        } else if (typeof resultPart === "string") resultText.push(resultPart);
+      }
+      if (resultImages.length) inlineToolImages.push(resultImages);
       results.push({
         role: "tool",
         tool_call_id: part.callId,
-        content: part.content.map(inputPartText).join("\n"),
+        content: resultText.join("\n"),
       });
+    }
     else if (part instanceof vscode.LanguageModelDataPart && part.mimeType.startsWith("image/")) {
       if (!imageInput) throw new Error("The selected Orvix model does not advertise image input support.");
       images.push({
@@ -76,7 +102,17 @@ function convertMessage(message: vscode.LanguageModelChatRequestMessage, imageIn
     ? [...(plainText ? [{ type: "text" as const, text: plainText }] : []), ...images]
     : plainText;
   if (role === "assistant" && toolCalls.length) return [{ role, content: content || null, tool_calls: toolCalls }];
-  if (results.length) return content ? [{ role, content }, ...results] : results;
+  if (results.length) {
+    const messages: ApiMessage[] = content ? [{ role, content }, ...results] : [...results];
+    // Vision models get tool-result images re-attached as a trailing user
+    // message, mirroring the OpenAI-compatible pattern of image-carrying tool
+    // results; non-vision requests keep the placeholder text only (inline
+    // images are only collected when `imageInput` is true).
+    if (imageInput && inlineToolImages.length) {
+      messages.push({ role: "user", content: inlineToolImages.flat() });
+    }
+    return messages;
+  }
   return [{ role, content }];
 }
 

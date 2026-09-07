@@ -12,6 +12,7 @@ import {
   IMAGE_MODEL_CREDIT_COSTS,
   imageCreditsFor,
   resolveImageCount,
+  type Fetcher,
   type ImageGenerationResult,
 } from "./client";
 import type { ImageCatalogueModel } from "./catalogue";
@@ -133,13 +134,99 @@ export function imageInvocationMessage(input: ImageToolInput, defaultModel?: str
   return `${prefix}${costHint}…`;
 }
 
-/** Builds the credits metadata payload reported alongside the tool result. */
-export function imageCreditsPayload(
-  result: ImageGenerationResult,
-  creditsSpent: number,
-  fallbackModel: string,
-): Record<string, unknown> {
-  return { model: result.model || fallbackModel, creditsSpent, images: result.data.length };
+/** Skip inlining when the fetched image bytes exceed this budget (10 MB). */
+export const INLINE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+
+/** Timeout for one hosted-image byte fetch (per image). */
+export const INLINE_IMAGE_FETCH_TIMEOUT_MS = 30_000;
+
+/** A generated image decoded to inline-ready bytes. */
+export interface InlineImageSource {
+  readonly bytes: Uint8Array;
+  readonly mimeType: string;
+}
+
+/**
+ * Resolves the inline sources for a generation result, unconditionally: URL
+ * entries become fetch descriptors and `b64_json` entries decode directly, so
+ * the tool shell can render every image in the chat thread. Sizing is a pure
+ * check here — `b64Json` length approximates decoded size (base64 inflates by
+ * 4/3, so a 10 MB cap admits at most ~7.5 MB of decoded bytes), and actual
+ * byte-level enforcement happens after fetching.
+ *
+ * Returns `{ bytes, mimeType }` per image; entries that cannot be inlined
+ * (oversized `b64`, unparseable data URLs) are `undefined` and simply skip
+ * inlining without failing the tool result.
+ *
+ * @example
+ * inlineImageSources([{ url: "https://…" }]);
+ * // => [{ source: "url", url: "https://…" }]
+ */
+export function inlineImageSources(
+  images: readonly { url?: string; b64Json?: string }[],
+  maxBytes = INLINE_IMAGE_MAX_BYTES,
+): readonly ({ source: "url"; url: string } | { source: "b64"; bytes: Uint8Array; mimeType: string } | undefined)[] {
+  return images.map((image) => {
+    if (image.url) {
+      if (!/^https?:\/\//i.test(image.url)) return undefined;
+      return { source: "url", url: image.url };
+    }
+    if (image.b64Json) {
+      // ~4/3 overhead: reject before decoding if the base64 alone busts the cap.
+      if (image.b64Json.length * 0.75 > maxBytes) return undefined;
+      const comma = image.b64Json.indexOf(",");
+      const dataUrl = /^data:[^;,]+(;base64)?,/i.test(image.b64Json);
+      const encoded = dataUrl ? image.b64Json.slice(comma + 1) : image.b64Json;
+      const mime = dataUrl ? /^data:([^;,]+)/i.exec(image.b64Json)?.[1] : undefined;
+      try {
+        const bytes = Buffer.from(encoded, "base64");
+        if (!bytes.length) return undefined;
+        return { source: "b64", bytes: new Uint8Array(bytes), mimeType: mime ?? "image/jpeg" };
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  });
+}
+
+/**
+ * Fetches the bytes behind one hosted image URL with a hard timeout and size
+ * cap, capturing the response content type for the inline data part. Any
+ * failure resolves `undefined` — inlining is best-effort and must never break
+ * the tool result.
+ */
+export async function fetchInlineImage(
+  url: string,
+  fetcher: Fetcher,
+  maxBytes = INLINE_IMAGE_MAX_BYTES,
+  timeoutMs = INLINE_IMAGE_FETCH_TIMEOUT_MS,
+): Promise<{ bytes: Uint8Array; contentType: string | null } | undefined> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetcher(url, { signal: controller.signal });
+    if (!response.ok) return undefined;
+    const declared = Number(response.headers.get("content-length") ?? 0);
+    if (declared > maxBytes) return undefined;
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > maxBytes) return undefined;
+    return {
+      bytes: new Uint8Array(buffer),
+      contentType: response.headers.get("content-type"),
+    };
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Maps response content types to the MIME types VS Code accepts for images. */
+export function inlineImageMime(contentType: string | null): string {
+  if (!contentType) return "image/jpeg";
+  const mime = contentType.split(";")[0].trim().toLowerCase();
+  return mime.startsWith("image/") ? mime : "image/jpeg";
 }
 
 /** Re-exported for the tool shell and tests. */

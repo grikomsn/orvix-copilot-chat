@@ -3,9 +3,11 @@ import test from "node:test";
 import {
   coerceImageInput,
   formatImageResult,
-  imageCreditsPayload,
   imageInvocationMessage,
   imageToolCredits,
+  fetchInlineImage,
+  inlineImageMime,
+  inlineImageSources,
 } from "./tool-logic";
 
 test("formats image results with the credits spent", () => {
@@ -114,13 +116,69 @@ test("builds invocation messages with the estimated cost", () => {
   );
 });
 
-test("builds the credits metadata payload for tool results", () => {
-  assert.deepEqual(
-    imageCreditsPayload({ model: "orvix/flux-2-pro", data: [{ url: "u" }, { url: "v" }] }, 14, "flux-2-pro"),
-    { model: "orvix/flux-2-pro", creditsSpent: 14, images: 2 },
+test("collects inline sources from urls and b64 entries", async () => {
+  const sources = inlineImageSources([
+    { url: "https://cdn.example.invalid/a.jpg" },
+    { b64Json: Buffer.from("hello image").toString("base64") },
+    { url: "ftp://not-http.example.invalid/x.png" },
+    { b64Json: "data:image/png;base64," + Buffer.from("png bytes").toString("base64") },
+    { b64Json: "!" }, // invalid base64 decodes to zero bytes
+    {},
+  ]);
+  assert.equal(sources.length, 6);
+  assert.deepEqual(sources[0], { source: "url", url: "https://cdn.example.invalid/a.jpg" });
+  assert.equal(sources[1] && sources[1].source === "b64" && new TextDecoder().decode(sources[1].bytes), "hello image");
+  assert.equal(sources[1] && sources[1].source === "b64" && sources[1].mimeType, "image/jpeg");
+  assert.equal(sources[2], undefined); // non-http(s) URL never inlined
+  const png = sources[3];
+  assert.equal(png && png.source === "b64" && new TextDecoder().decode(png.bytes), "png bytes");
+  assert.equal(png && png.source === "b64" && png.mimeType, "image/png");
+  assert.equal(sources[4], undefined);
+  assert.equal(sources[5], undefined);
+
+  // Oversized base64 is rejected before decoding.
+  const oversized = inlineImageSources(
+    [{ b64Json: "A".repeat(16 * 1024 * 1024) }],
+    10 * 1024 * 1024,
   );
-  assert.deepEqual(
-    imageCreditsPayload({ model: "", data: [] }, 0, "fallback"),
-    { model: "fallback", creditsSpent: 0, images: 0 },
+  assert.equal(oversized[0], undefined);
+
+  // Content-type mapping for fetched bytes.
+  assert.equal(inlineImageMime("image/png"), "image/png");
+  assert.equal(inlineImageMime("image/jpeg; charset=binary"), "image/jpeg");
+  assert.equal(inlineImageMime("application/octet-stream"), "image/jpeg");
+  assert.equal(inlineImageMime(null), "image/jpeg");
+
+  // Byte fetch honors status, declared size, and actual size.
+  const bytes = new Uint8Array([1, 2, 3]);
+  const ok = await fetchInlineImage("https://x.example.invalid/a", async () =>
+    new Response(bytes, { status: 200, headers: { "Content-Type": "image/png" } }),
   );
+  assert.ok(ok);
+  assert.deepEqual([...(ok?.bytes ?? [])], [1, 2, 3]);
+  assert.equal(ok?.contentType, "image/png");
+
+  const httpError = await fetchInlineImage("https://x.example.invalid/a", async () =>
+    new Response("nope", { status: 404 }),
+  );
+  assert.equal(httpError, undefined);
+
+  const tooBig = await fetchInlineImage(
+    "https://x.example.invalid/a",
+    async () => new Response(new Uint8Array(11), { status: 200 }),
+    10,
+  );
+  assert.equal(tooBig, undefined);
+
+  const declaredTooBig = await fetchInlineImage(
+    "https://x.example.invalid/a",
+    async () => new Response(bytes, { status: 200, headers: { "Content-Length": "999999" } }),
+    10,
+  );
+  assert.equal(declaredTooBig, undefined);
+
+  const networkFail = await fetchInlineImage("https://x.example.invalid/a", async () => {
+    throw new Error("boom");
+  });
+  assert.equal(networkFail, undefined);
 });
