@@ -300,15 +300,15 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         )} max output${metadata.imageInput ? " · image input" : " · text input"}${
           metadata.releaseDate ? ` · released ${metadata.releaseDate}` : ""
         }${pricing ? ` · ${pricing.pricing}` : ""}${metadata.description ? `\n${metadata.description}` : ""}`,
-        maxInputTokens: metadata.contextLength,
+        maxInputTokens: Math.max(1, metadata.contextLength - metadata.maxOutputTokens),
         maxOutputTokens: metadata.maxOutputTokens,
         isUserSelectable: true,
         ...(credentialRef !== "legacy" ? { isBYOK: true } : {}),
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure Orvix API key" } }
           : {}),
-        ...(buildModelConfigurationSchema(metadata, contextSizeOptions(metadata.contextLength))
-          ? { configurationSchema: buildModelConfigurationSchema(metadata, contextSizeOptions(metadata.contextLength)) }
+        ...(buildModelConfigurationSchema(metadata, contextSizeOptions(Math.max(1, metadata.contextLength - metadata.maxOutputTokens)))
+          ? { configurationSchema: buildModelConfigurationSchema(metadata, contextSizeOptions(Math.max(1, metadata.contextLength - metadata.maxOutputTokens))) }
           : {}),
         capabilities: {
           imageInput: metadata.imageInput,
