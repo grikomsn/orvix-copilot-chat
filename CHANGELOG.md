@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0
+
+### Minor Changes
+
+- 20056dc: Adds a Context Window picker control (Auto, 64K, 128K, 200K, Maximum) that caps how much conversation history each request sends, clamped to the model's registered input limit.
+
+### Patch Changes
+
+- 20056dc: Fix Auto context size being interpreted as zero input tokens by VS Code, collapsing the context indicator to the output reserve and triggering premature compaction.
+
+  Reserve up to 32K response tokens by default instead of subtracting the entire output capability from the context window. Honor positive live shared-context limits independently of output capability.
+
+- 20056dc: Report each model's `maxInputTokens` as context minus the output budget so the picker's context window matches the model's real usable input and no longer collapses to the output cap.
+
 ## 0.4.0
 
 ### Minor Changes
