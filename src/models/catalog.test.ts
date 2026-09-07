@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  advertisedModelLimits,
   FALLBACK_MODELS,
   enrichModelMetadata,
   formatModelName,
@@ -295,85 +296,34 @@ test("uses the selected catalog limit for default and explicit output settings",
   assert.equal(resolveMaxOutputTokens(32_000, 65_536), 32_000);
 });
 
-test("reserves the output budget from the advertised input window", () => {
-  assert.equal(resolveMaxInputTokens(getModelMetadata("orvix/deepseek-v4-flash")), 66_000);
-  assert.equal(resolveMaxInputTokens(getModelMetadata("orvix/glm-5.3-flash")), 318_928);
-  assert.equal(resolveMaxInputTokens(getModelMetadata("orvix/auto")), 433_616);
-  // A degenerate window floors at 1 so the picker never advertises a negative input.
-  assert.equal(resolveMaxInputTokens({ contextLength: 100, maxOutputTokens: 200 }), 1);
+test("honors live shared windows independently of output capability", () => {
+  for (const output of [100_000, 200_000]) {
+    const [model] = orderModelMetadata([{ id: "orvix/example", context_length: 100_000, max_output_tokens: output }]);
+    assert.equal(model.contextLength, 100_000);
+    assert.equal(resolveMaxInputTokens(model), 67_232);
+  }
+  const [model] = orderModelMetadata([{ id: "orvix/deepseek-v4-flash", context_length: 100_000 }]);
+  assert.equal(model.contextLength, 100_000);
+  assert.equal(resolveMaxInputTokens(model), 67_232);
 });
 
-test("advertises a usable input window for every managed model", () => {
-  const expected = new Map<string, [number, number]>([
-    ["orvix/auto", [433_616, 16_384]],
-    ["orvix/muse-spark-1.2", [370_000, 80_000]],
-    ["orvix/muse-spark-1.3", [370_000, 80_000]],
-    ["orvix/mimo-v2.5", [322_000, 128_000]],
-    ["orvix/mimo-v2.5-pro", [322_000, 128_000]],
-    ["orvix/glm-5.2", [417_232, 32_768]],
-    ["orvix/glm-5.3-flash", [318_928, 131_072]],
-    ["orvix/gpt-5.6-luna", [322_000, 128_000]],
-    ["orvix/gpt-5.6-sol", [322_000, 128_000]],
-    ["orvix/gpt-5.6-terra", [322_000, 128_000]],
-    ["orvix/grok-4.6", [417_232, 32_768]],
-    ["orvix/deepseek-v4-flash", [66_000, 384_000]],
-    ["orvix/deepseek-v4-pro", [66_000, 384_000]],
-    ["orvix/gemini-3.7-flash", [418_000, 32_000]],
-    ["orvix/gemini-3.8-flash", [418_000, 32_000]],
-    ["orvix/minimax-m3", [417_232, 32_768]],
-    ["orvix/qwen-3.8-flash", [384_464, 65_536]],
-    ["orvix/qwen-3.8-max", [417_232, 32_768]],
-    ["orvix/kimi-k3", [433_616, 16_384]],
-  ]);
-  for (const [id, [maxInput, maxOutput]] of expected) {
-    const metadata = getModelMetadata(id);
-    assert.equal(resolveMaxInputTokens(metadata), maxInput, `${id} maxInputTokens`);
-    assert.equal(metadata.maxOutputTokens, maxOutput, `${id} maxOutputTokens`);
+test("reserves a usable input budget even when output capability fills the window", () => {
+  for (const contextLength of [229_376, 262_144, 450_000, 1_048_576]) {
+    const limits = advertisedModelLimits({ contextLength, maxOutputTokens: contextLength });
+    assert.equal(limits.maxInputTokens, contextLength - 32_768);
+    assert.equal(limits.maxOutputTokens, 32_768);
+    const configured = advertisedModelLimits({ contextLength, maxOutputTokens: 131_072 }, 16_384);
+    assert.equal(configured.maxInputTokens + configured.maxOutputTokens, contextLength);
+    assert.equal(configured.maxOutputTokens, 16_384);
   }
 });
 
-test("rejects a live context window that leaves no room for output", () => {
-  // GLM 5.3 Flash upstream mislabels the output cap as the context.
-  const [glm] = orderModelMetadata([
-    { id: "orvix/glm-5.3-flash", context_length: 131_072, max_output_tokens: 131_072 },
-  ]);
-  assert.equal(glm.contextLength, 450_000);
-  assert.equal(glm.maxOutputTokens, 131_072);
-  assert.equal(resolveMaxInputTokens(glm), 318_928);
-});
-
-test("accepts a live context window larger than the output budget", () => {
-  const [deepseek] = orderModelMetadata([
-    { id: "orvix/deepseek-v4-flash", context_length: 1_048_576, max_output_tokens: 384_000 },
-  ]);
-  assert.equal(deepseek.contextLength, 1_048_576);
-  assert.equal(deepseek.maxOutputTokens, 384_000);
-  assert.equal(resolveMaxInputTokens(deepseek), 664_576);
-});
-
-test("applies the context guard to nested capability output limits", () => {
-  const [model] = orderModelMetadata([
-    { id: "orvix/example", context_length: 100_000, capabilities: { max_output_tokens: 200_000 } },
-  ]);
-  assert.equal(model.contextLength, 32_768);
-  assert.equal(model.maxOutputTokens, 200_000);
-  assert.equal(resolveMaxInputTokens(model), 1);
-});
-
-test("guards a live context against the fallback output when the live output is missing", () => {
-  // deepseek-v4-flash reports a context but no output cap; the managed 384K
-  // output budget must still reserve room instead of collapsing the window.
-  const [deepseek] = orderModelMetadata([{ id: "orvix/deepseek-v4-flash", context_length: 100_000 }]);
-  assert.equal(deepseek.contextLength, 450_000);
-  assert.equal(deepseek.maxOutputTokens, 384_000);
-  assert.equal(resolveMaxInputTokens(deepseek), 66_000);
-});
-
-test("accepts a live context larger than a live output cap", () => {
-  const [model] = orderModelMetadata([
-    { id: "orvix/example", context_length: 500_000, max_output_tokens: 100_000 },
-  ]);
-  assert.equal(model.contextLength, 500_000);
-  assert.equal(model.maxOutputTokens, 100_000);
-  assert.equal(resolveMaxInputTokens(model), 400_000);
+test("every supported fallback has room for conversation and a bounded response", () => {
+  for (const id of FALLBACK_MODELS) {
+    const metadata = getModelMetadata(id);
+    const limits = advertisedModelLimits(metadata);
+    assert.ok(limits.maxInputTokens > 32_768, id);
+    assert.ok(limits.maxOutputTokens > 0 && limits.maxOutputTokens <= 32_768, id);
+    assert.equal(limits.maxInputTokens + limits.maxOutputTokens, metadata.contextLength, id);
+  }
 });

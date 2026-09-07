@@ -111,8 +111,8 @@ export function applyReasoningEffort(
 
 /** A selectable context window tier shown on a model's picker configuration. */
 export interface ContextSizeOption {
-  /** Context cap in input tokens; 0 selects the model's default handling. */
-  readonly value: number;
+  /** Context cap in input tokens; "auto" selects the model's default handling. */
+  readonly value: number | "auto";
   /** Short picker label, e.g. "Auto", "128K", or "Maximum". */
   readonly label: string;
   /** Picker description for the tier. */
@@ -132,7 +132,8 @@ export function contextSizeOptions(maxInputTokens: number): ContextSizeOption[] 
   const tiers = CONTEXT_SIZE_TIERS.filter((tier) => tier.value < maxInputTokens);
   if (!tiers.length) return undefined;
   return [
-    { value: 0, label: "Auto", description: "Default context handling for this model." },
+    // VS Code treats every numeric contextSize, including zero, as an input budget.
+    { value: "auto", label: "Auto", description: "Default context handling for this model." },
     ...tiers.map((tier) => ({
       value: tier.value,
       label: tier.label,
@@ -173,13 +174,13 @@ export function buildModelConfigurationSchema(
       ...(thinking?.properties ?? {}),
       ...(contextOptions ? {
         contextSize: {
-          type: "number",
+          type: ["string", "number"],
           title: "Context Window",
           enum: contextOptions.map((option) => option.value),
           enumItemLabels: contextOptions.map((option) => option.label),
           enumDescriptions: contextOptions.map((option) => option.description),
-          default: 0,
-          group: "navigation",
+          default: "auto",
+          group: "tokens",
         },
       } : {}),
     },

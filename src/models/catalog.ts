@@ -136,7 +136,7 @@ export function resolveMaxOutputTokens(configured: number, advertised: number): 
 export function resolveMaxInputTokens(
   metadata: Pick<OrvixModelMetadata, "contextLength" | "maxOutputTokens">,
 ): number {
-  return Math.max(1, metadata.contextLength - metadata.maxOutputTokens);
+  return advertisedModelLimits(metadata).maxInputTokens;
 }
 
 export function orderModelMetadata(models: readonly OrvixApiModel[]): OrvixModelMetadata[] {
@@ -208,7 +208,7 @@ function modelMetadataFromApi(raw: OrvixApiModel): OrvixModelMetadata | undefine
         : fallback.name,
     version: typeof raw.version === "string" && raw.version ? raw.version : fallback.version,
     contextLength:
-      liveContextLength(raw, capabilities, fallback.maxOutputTokens) ?? fallback.contextLength,
+      liveContextLength(raw) ?? fallback.contextLength,
     maxOutputTokens:
       positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens ?? capabilities?.max_output_tokens) ??
       fallback.maxOutputTokens,
@@ -276,26 +276,9 @@ function positiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
-/**
- * A live context window must be strictly larger than the model's output
- * budget, otherwise a thread would have no room for input. When the upstream
- * reports a context that is not larger (e.g. it mislabels the output cap as
- * the context), fall back to the documented context so the picker never
- * collapses the usable window.
- */
-function liveContextLength(
-  raw: OrvixApiModel,
-  capabilities: Record<string, unknown> | undefined,
-  fallbackOutputTokens: number,
-): number | undefined {
-  const context = positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len);
-  const output = positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens ?? capabilities?.max_output_tokens);
-  if (context === undefined) return undefined;
-  // Compare against the advertised output budget: the live cap when present,
-  // otherwise the managed fallback, so a context reported without an output
-  // cap cannot collapse the window below the fallback output.
-  const minContext = (output ?? fallbackOutputTokens) + 1;
-  return context >= minContext ? context : undefined;
+/** A positive live shared window is authoritative, independent of output capability. */
+function liveContextLength(raw: OrvixApiModel): number | undefined {
+  return positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len);
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -315,4 +298,16 @@ function unixDate(value: unknown): string | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? new Date(value * 1_000).toISOString().slice(0, 10)
     : undefined;
+}
+
+/** Separate output capability from the response budget reserved by the chat UI. */
+export function advertisedModelLimits(
+  model: Pick<OrvixModelMetadata, "contextLength" | "maxOutputTokens">,
+  configuredOutput = 0,
+): { maxInputTokens: number; maxOutputTokens: number } {
+  const requested = Number.isFinite(configuredOutput) && configuredOutput > 0
+    ? Math.floor(configuredOutput)
+    : 32_768;
+  const output = Math.max(1, Math.min(model.maxOutputTokens, requested, model.contextLength - 1));
+  return { maxInputTokens: Math.max(1, model.contextLength - output), maxOutputTokens: output };
 }

@@ -2,13 +2,13 @@ import * as vscode from "vscode";
 import { OrvixAuth, type GatewaySession } from "./auth/auth";
 import { messageOf } from "./errors";
 import {
+  advertisedModelLimits,
   FALLBACK_MODEL_METADATA,
   FALLBACK_MODELS,
   formatTokenLimit,
   formatModelName,
   enrichModelMetadata,
   orderModelMetadata,
-  resolveMaxInputTokens,
   type OrvixApiModel,
   type OrvixModelMetadata,
 } from "./models/catalog";
@@ -282,6 +282,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
 
     return this.catalogFor(credentialRef).map((metadata) => {
       const pricing = modelPricingFields(metadata.cost);
+      const limits = advertisedModelLimits(metadata, this.configuration.get("maxOutputTokens", 0));
       return {
         id: qualifiedModelId(credentialRef, metadata.id),
         rawModelId: metadata.id,
@@ -301,15 +302,14 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         )} max output${metadata.imageInput ? " · image input" : " · text input"}${
           metadata.releaseDate ? ` · released ${metadata.releaseDate}` : ""
         }${pricing ? ` · ${pricing.pricing}` : ""}${metadata.description ? `\n${metadata.description}` : ""}`,
-        maxInputTokens: resolveMaxInputTokens(metadata),
-        maxOutputTokens: metadata.maxOutputTokens,
+        ...limits,
         isUserSelectable: true,
         ...(credentialRef !== "legacy" ? { isBYOK: true } : {}),
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure Orvix API key" } }
           : {}),
-        ...(buildModelConfigurationSchema(metadata, contextSizeOptions(resolveMaxInputTokens(metadata)))
-          ? { configurationSchema: buildModelConfigurationSchema(metadata, contextSizeOptions(resolveMaxInputTokens(metadata))) }
+        ...(buildModelConfigurationSchema(metadata, contextSizeOptions(limits.maxInputTokens))
+          ? { configurationSchema: buildModelConfigurationSchema(metadata, contextSizeOptions(limits.maxInputTokens)) }
           : {}),
         capabilities: {
           imageInput: metadata.imageInput,
