@@ -118,8 +118,11 @@ use a web-search tool). The tool takes a non-empty `prompt` and an optional
 `model` (an Orvix image model slug, with or without the `orvix/` prefix), plus
 optional `n`, `size`, `quality`, and `response_format`. When `model` is
 omitted — or names an unknown model — the **default image model** is used
-instead. The tool returns the hosted image URLs and the credits spent; image
-bytes are never inlined into the model context.
+instead. The tool returns the hosted image URLs and the credits spent, and
+inlines every generated image into the chat thread so they render directly in
+the response. Vision-capable chat models also receive the image bytes on later
+turns (letting them iterate on their own output); non-vision models see a
+placeholder instead, and the URLs remain available as text either way.
 
 ### Default image model
 

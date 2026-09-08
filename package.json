@@ -255,7 +255,7 @@
         ],
         "toolReferenceName": "orvixImages",
         "displayName": "Orvix Image Generation",
-        "modelDescription": "Generate images from a text prompt with Orvix image models (flux-2-pro, qwen-image-3.0, gpt-image-2, grok-imagine-image, midjourney, seedream-5.0-pro, gemini-3-pro-image). Each image debits prepaid Orvix Image Credits; the tool returns the hosted image URLs and the credits spent. Requires an Orvix API key.",
+        "modelDescription": "Generate images from a text prompt with Orvix image models (flux-2-pro, qwen-image-3.0, gpt-image-2, grok-imagine-image, midjourney, seedream-5.0-pro, gemini-3-pro-image). Each image debits prepaid Orvix Image Credits; the tool returns the hosted image URLs, the credits spent, and the generated images as inline data parts. Requires an Orvix API key.",
         "userDescription": "Generate images with Orvix image models using prepaid Image Credits.",
         "canBeReferencedInPrompt": true,
         "icon": "$(device-camera)",
