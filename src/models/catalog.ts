@@ -1,7 +1,9 @@
 import { orvixModelCost, modelCostFromApi, type ModelCost } from "./pricing";
 import type { ModelsDevModelMetadata } from "./metadata";
 
-export const FALLBACK_MODELS = ["orvix/auto", "orvix/muse-spark-1.2"] as const;
+// The second offline entry must be a currently served managed route; retired
+// ids stay in the managed enrichment map in case Orvix re-serves them.
+export const FALLBACK_MODELS = ["orvix/auto", "orvix/gpt-5.6-terra"] as const;
 
 export const DEFAULT_MAX_INPUT_TOKENS = 32_768;
 export const DEFAULT_MAX_OUTPUT_TOKENS = 4_096;
@@ -43,18 +45,27 @@ export interface OrvixApiModel {
 
 const MANAGED_MODEL_NAMES = new Map<string, string>([
   ["orvix/auto", "Orvix Auto"],
+  ["orvix/atria-dawn-preview", "Atria Dawn Preview"],
+  ["orvix/jev", "Jev"],
   ["orvix/muse-spark-1.2", "Muse Spark 1.2"],
   ["orvix/muse-spark-1.3", "Muse Spark 1.3"],
   ["orvix/mimo-v2.5", "MiMo-V2.5"],
   ["orvix/mimo-v2.5-pro", "MiMo-V2.5-Pro"],
   ["orvix/glm-5.2", "GLM 5.2"],
   ["orvix/glm-5.3-flash", "GLM 5.3 Flash"],
+  ["orvix/glm-5.3-flash:free", "GLM 5.3 Flash Free"],
   ["orvix/gpt-5.6-luna", "GPT-5.6 Luna"],
+  ["orvix/gpt-5.6-luna:free", "GPT-5.6 Luna Free"],
   ["orvix/gpt-5.6-sol", "GPT-5.6 Sol"],
   ["orvix/gpt-5.6-terra", "GPT-5.6 Terra"],
   ["orvix/grok-4.6", "Grok 4.6"],
+  ["orvix/grok-4.7", "Grok 4.7"],
+  ["orvix/grok-4.7:free", "Grok 4.7 Free"],
+  ["orvix/grok-4.3:free", "Grok 4.3 Free"],
   ["orvix/deepseek-v4-flash", "DeepSeek V4 Flash"],
+  ["orvix/deepseek-v4-flash:free", "DeepSeek V4 Flash Free"],
   ["orvix/deepseek-v4-pro", "DeepSeek V4 Pro"],
+  ["orvix/gemini-3.5-flash:free", "Gemini 3.5 Flash Free"],
   ["orvix/gemini-3.7-flash", "Gemini 3.7 Flash"],
   ["orvix/gemini-3.8-flash", "Gemini 3.8 Flash"],
   ["orvix/minimax-m3", "MiniMax M3"],
@@ -67,18 +78,27 @@ const MANAGED_MODEL_NAMES = new Map<string, string>([
 // route capabilities. Live nested capabilities override these values.
 const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
   modelEntry("orvix/auto", 450_000, 16_384),
+  modelEntry("orvix/atria-dawn-preview", 450_000, 32_768),
+  modelEntry("orvix/jev", 450_000, 32_000),
   modelEntry("orvix/muse-spark-1.2", 450_000, 80_000, true, true, true),
   modelEntry("orvix/muse-spark-1.3", 450_000, 80_000, true, true, true),
   modelEntry("orvix/mimo-v2.5", 450_000, 128_000, true, true),
   modelEntry("orvix/mimo-v2.5-pro", 450_000, 128_000, false, true),
   modelEntry("orvix/glm-5.2", 450_000, 32_768, false, true, true),
-  modelEntry("orvix/glm-5.3-flash", 450_000, 131_072),
+  modelEntry("orvix/glm-5.3-flash", 450_000, 131_072, true, true),
+  modelEntry("orvix/glm-5.3-flash:free", 450_000, 131_072, true, true),
   modelEntry("orvix/gpt-5.6-luna", 450_000, 128_000, true, true, true),
+  modelEntry("orvix/gpt-5.6-luna:free", 450_000, 128_000, true, true, true),
   modelEntry("orvix/gpt-5.6-sol", 450_000, 128_000, true, true, true),
   modelEntry("orvix/gpt-5.6-terra", 450_000, 128_000, true, true, true),
   modelEntry("orvix/grok-4.6", 450_000, 32_768, true, true),
+  modelEntry("orvix/grok-4.7", 450_000, 32_768, true, true),
+  modelEntry("orvix/grok-4.7:free", 450_000, 32_768, true, true),
+  modelEntry("orvix/grok-4.3:free", 450_000, 32_768, true, true),
   modelEntry("orvix/deepseek-v4-flash", 450_000, 384_000, false, true),
+  modelEntry("orvix/deepseek-v4-flash:free", 450_000, 384_000, true, true),
   modelEntry("orvix/deepseek-v4-pro", 450_000, 384_000, false, true, true),
+  modelEntry("orvix/gemini-3.5-flash:free", 450_000, 32_000, true, true),
   modelEntry("orvix/gemini-3.7-flash", 450_000, 32_000, true, true),
   modelEntry("orvix/gemini-3.8-flash", 450_000, 32_000, true, true),
   modelEntry("orvix/minimax-m3", 450_000, 32_768, false, true),
@@ -89,7 +109,7 @@ const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
 
 export const FALLBACK_MODEL_METADATA: readonly OrvixModelMetadata[] = [
   managedModel("orvix/auto"),
-  managedModel("orvix/muse-spark-1.2"),
+  managedModel("orvix/gpt-5.6-terra"),
 ];
 
 // Casing for recurring model-family tokens that plain capitalization gets
@@ -108,7 +128,7 @@ const PREFERRED_ORDER = new Map<string, number>(FALLBACK_MODELS.map((id, index) 
 
 export function isOrvixChatModel(id: string): boolean {
   const value = id.trim().toLowerCase();
-  return Boolean(value) && !/(?:^|[-/])(point|embed(?:ding)?s?|image|video|audio|voice|rerank)(?:[-/.]|$)/.test(value);
+  return Boolean(value) && !/(?:^|[-/])(point|embed(?:ding)?s?|image|video|audio|voice|rerank|flux|midjourney|seedream)(?:[-/.]|$)/.test(value);
 }
 
 export function orderModels(ids: readonly string[]): string[] {

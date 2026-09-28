@@ -20,6 +20,13 @@ test("accepts Orvix chat model IDs and excludes non-chat families", () => {
   assert.equal(isOrvixChatModel("multilingual-e5-large-instruct"), true);
   assert.equal(isOrvixChatModel("text-embedding-3-large"), false);
   assert.equal(isOrvixChatModel("image/generator"), false);
+  assert.equal(isOrvixChatModel("orvix/flux-2-pro"), false);
+  assert.equal(isOrvixChatModel("orvix/midjourney"), false);
+  assert.equal(isOrvixChatModel("orvix/seedream-5.0-pro"), false);
+  assert.equal(isOrvixChatModel("orvix/grok-4.7"), true);
+  assert.equal(isOrvixChatModel("orvix/grok-4.7:free"), true);
+  assert.equal(isOrvixChatModel("orvix/atria-dawn-preview"), true);
+  assert.equal(isOrvixChatModel("orvix/jev"), true);
 });
 
 test("orders documented fallback models before other discovered models", () => {
@@ -38,6 +45,11 @@ test("formats model IDs for the VS Code picker", () => {
   assert.equal(formatModelName("orvix/gpt-5.6-sol"), "GPT-5.6 Sol");
   assert.equal(formatModelName("orvix/gpt-5.6-terra"), "GPT-5.6 Terra");
   assert.equal(formatModelName("orvix/grok-4.6"), "Grok 4.6");
+  assert.equal(formatModelName("orvix/grok-4.7"), "Grok 4.7");
+  assert.equal(formatModelName("orvix/grok-4.7:free"), "Grok 4.7 Free");
+  assert.equal(formatModelName("orvix/atria-dawn-preview"), "Atria Dawn Preview");
+  assert.equal(formatModelName("orvix/jev"), "Jev");
+  assert.equal(formatModelName("orvix/deepseek-v4-flash:free"), "DeepSeek V4 Flash Free");
   assert.equal(formatModelName("orvix/qwen-3.8-flash"), "Qwen 3.8 Flash");
   assert.equal(formatModelName("orvix/deepseek-v4-pro"), "DeepSeek V4 Pro");
   assert.equal(formatModelName("orvix/minimax-m3"), "MiniMax M3");
@@ -99,6 +111,23 @@ test("mirrors live capabilities for newly added managed models", () => {
   assert.equal(getModelMetadata("orvix/gpt-5.6-terra").reasoningEffort, true);
   assert.equal(getModelMetadata("orvix/grok-4.6").imageInput, true);
   assert.equal(getModelMetadata("orvix/grok-4.6").reasoningEffort, false);
+  assert.deepEqual(getModelMetadata("orvix/grok-4.7"), {
+    id: "orvix/grok-4.7",
+    name: "Grok 4.7",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 32_768,
+    imageInput: true,
+    toolCalling: true,
+    reasoningEffort: false,
+    cost: { input: 2, output: 6, cacheRead: 0.5 },
+  });
+  assert.equal(getModelMetadata("orvix/gpt-5.6-luna:free").reasoningEffort, true);
+  assert.equal(getModelMetadata("orvix/gpt-5.6-luna:free").cost, undefined);
+  assert.equal(getModelMetadata("orvix/deepseek-v4-flash:free").imageInput, true);
+  assert.equal(getModelMetadata("orvix/atria-dawn-preview").maxOutputTokens, 32_768);
+  assert.equal(getModelMetadata("orvix/atria-dawn-preview").toolCalling, false);
+  assert.equal(getModelMetadata("orvix/jev").maxOutputTokens, 32_000);
   assert.equal(getModelMetadata("orvix/qwen-3.8-flash").imageInput, false);
   assert.equal(getModelMetadata("orvix/qwen-3.8-flash").maxOutputTokens, 65_536);
 });
@@ -227,8 +256,8 @@ test("uses the official managed route metadata for discovered models", () => {
         id: "orvix/glm-5.3-flash",
         contextLength: 450_000,
         maxOutputTokens: 131_072,
-        imageInput: false,
-        toolCalling: false,
+        imageInput: true,
+        toolCalling: true,
         reasoningEffort: false,
       },
       {
