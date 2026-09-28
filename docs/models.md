@@ -13,10 +13,11 @@ entries are never merged into a successful response.
 ## Managed models
 
 Live discovery lists the `orvix/*` models enabled for your project. Documented
-families include `orvix/auto`, the `orvix/muse-spark-*` reasoning models,
-`orvix/deepseek-v4-pro`, `orvix/glm-*`, `orvix/gpt-5.6-*`, `orvix/grok-4.6`,
-`orvix/gemini-*-flash`, `orvix/minimax-*`, `orvix/mimo-*`, `orvix/qwen-*`, and
-`orvix/kimi-*`. See the [Orvix Platform](https://platform.orvix.id) for the
+families include `orvix/auto`, `orvix/atria-dawn-preview`, `orvix/jev`, the
+`orvix/muse-spark-*` reasoning models, `orvix/deepseek-v4-pro`, `orvix/glm-*`,
+`orvix/gpt-5.6-*`, `orvix/grok-4.7`, `orvix/gemini-*-flash`, `orvix/minimax-*`,
+`orvix/mimo-*`, `orvix/qwen-*`, and `orvix/kimi-*`, with `:free` variants of
+several families. See the [Orvix Platform](https://platform.orvix.id) for the
 current list.
 
 ## BYOK models

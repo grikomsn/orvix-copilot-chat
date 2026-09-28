@@ -30,6 +30,7 @@ const MANAGED_MODEL_UPSTREAM_COST: Readonly<Record<string, ModelCost>> = {
   "orvix/gpt-5.6-sol": { input: 4, output: 20, cacheRead: 0.4 },
   "orvix/gpt-5.6-terra": { input: 2, output: 12, cacheRead: 0.2 },
   "orvix/grok-4.6": { input: 2, output: 6, cacheRead: 0.5 },
+  "orvix/grok-4.7": { input: 2, output: 6, cacheRead: 0.5 },
   "orvix/deepseek-v4-flash": { input: 0.14, output: 0.28, cacheRead: 0.0028 },
   "orvix/deepseek-v4-pro": { input: 0.435, output: 0.87, cacheRead: 0.003625 },
   "orvix/gemini-3.7-flash": { input: 0.75, output: 3.75, cacheRead: 0.075 },

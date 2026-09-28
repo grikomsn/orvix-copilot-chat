@@ -32,6 +32,10 @@ test("omits reasoning controls disabled by the managed route", () => {
 test("uses the documented Luna and DeepSeek effort profiles", () => {
   const schema = buildThinkingSchema(model("orvix/gpt-5.6-luna"));
   assert.deepEqual(schema?.properties.reasoningEffort.enum, ["none", "low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(
+    buildThinkingSchema(model("orvix/gpt-5.6-luna:free"))?.properties.reasoningEffort.enum,
+    ["none", "low", "medium", "high", "xhigh", "max"],
+  );
   assert.deepEqual(buildThinkingSchema(model("orvix/deepseek-v4-pro"))?.properties.reasoningEffort.enum, [
     "none",
     "low",
