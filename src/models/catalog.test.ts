@@ -20,6 +20,9 @@ test("accepts Orvix chat model IDs and excludes non-chat families", () => {
   assert.equal(isOrvixChatModel("multilingual-e5-large-instruct"), true);
   assert.equal(isOrvixChatModel("text-embedding-3-large"), false);
   assert.equal(isOrvixChatModel("image/generator"), false);
+  assert.equal(isOrvixChatModel("orvix/flux-2-pro"), false);
+  assert.equal(isOrvixChatModel("orvix/midjourney"), false);
+  assert.equal(isOrvixChatModel("orvix/seedream-5.0-pro"), false);
 });
 
 test("orders documented fallback models before other discovered models", () => {
@@ -228,7 +231,7 @@ test("uses the official managed route metadata for discovered models", () => {
         contextLength: 450_000,
         maxOutputTokens: 131_072,
         imageInput: false,
-        toolCalling: false,
+        toolCalling: true,
         reasoningEffort: false,
       },
       {

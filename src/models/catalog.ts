@@ -72,7 +72,7 @@ const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
   modelEntry("orvix/mimo-v2.5", 450_000, 128_000, true, true),
   modelEntry("orvix/mimo-v2.5-pro", 450_000, 128_000, false, true),
   modelEntry("orvix/glm-5.2", 450_000, 32_768, false, true, true),
-  modelEntry("orvix/glm-5.3-flash", 450_000, 131_072),
+  modelEntry("orvix/glm-5.3-flash", 450_000, 131_072, false, true),
   modelEntry("orvix/gpt-5.6-luna", 450_000, 128_000, true, true, true),
   modelEntry("orvix/gpt-5.6-sol", 450_000, 128_000, true, true, true),
   modelEntry("orvix/gpt-5.6-terra", 450_000, 128_000, true, true, true),
@@ -108,7 +108,7 @@ const PREFERRED_ORDER = new Map<string, number>(FALLBACK_MODELS.map((id, index) 
 
 export function isOrvixChatModel(id: string): boolean {
   const value = id.trim().toLowerCase();
-  return Boolean(value) && !/(?:^|[-/])(point|embed(?:ding)?s?|image|video|audio|voice|rerank)(?:[-/.]|$)/.test(value);
+  return Boolean(value) && !/(?:^|[-/])(point|embed(?:ding)?s?|image|video|audio|voice|rerank|flux|midjourney|seedream)(?:[-/.]|$)/.test(value);
 }
 
 export function orderModels(ids: readonly string[]): string[] {
