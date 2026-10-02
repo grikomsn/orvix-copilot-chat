@@ -17,7 +17,9 @@ families include `orvix/auto`, `orvix/atria-dawn-preview`, `orvix/jev`, the
 `orvix/muse-spark-*` reasoning models, `orvix/deepseek-v4-pro`, `orvix/glm-*`,
 `orvix/gpt-5.6-*`, `orvix/grok-4.7`, `orvix/gemini-*-flash`, `orvix/minimax-*`,
 `orvix/mimo-*`, `orvix/qwen-*`, and `orvix/kimi-*`, with `:free` variants of
-several families. See the [Orvix Platform](https://platform.orvix.id) for the
+several families. Free routes inherit their paid id's managed metadata without
+its per-token cost, and reasoning profiles resolve `:free` ids to their paid
+id. See the [Orvix Platform](https://platform.orvix.id) for the
 current list.
 
 ## BYOK models

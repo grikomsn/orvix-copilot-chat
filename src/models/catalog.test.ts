@@ -49,6 +49,9 @@ test("formats model IDs for the VS Code picker", () => {
   assert.equal(formatModelName("orvix/grok-4.7:free"), "Grok 4.7 Free");
   assert.equal(formatModelName("orvix/atria-dawn-preview"), "Atria Dawn Preview");
   assert.equal(formatModelName("orvix/jev"), "Jev");
+  // Unknown free routes render "Free" instead of leaking the suffix into a
+  // token.
+  assert.equal(formatModelName("orvix/kimi-k3:free"), "Kimi K3 Free");
   assert.equal(formatModelName("orvix/deepseek-v4-flash:free"), "DeepSeek V4 Flash Free");
   assert.equal(formatModelName("orvix/qwen-3.8-flash"), "Qwen 3.8 Flash");
   assert.equal(formatModelName("orvix/deepseek-v4-pro"), "DeepSeek V4 Pro");
@@ -123,8 +126,12 @@ test("mirrors live capabilities for newly added managed models", () => {
     cost: { input: 2, output: 6, cacheRead: 0.5 },
   });
   assert.equal(getModelMetadata("orvix/gpt-5.6-luna:free").reasoningEffort, true);
+  // Free routes inherit their paid id's ceilings but are never billed per
+  // token, so cost stays unset even when the paid entry carries an estimate.
   assert.equal(getModelMetadata("orvix/gpt-5.6-luna:free").cost, undefined);
-  assert.equal(getModelMetadata("orvix/deepseek-v4-flash:free").imageInput, true);
+  assert.equal(getModelMetadata("orvix/gpt-5.6-luna:free").maxOutputTokens, 128_000);
+  assert.equal(getModelMetadata("orvix/kimi-k3:free").maxOutputTokens, 16_384);
+  assert.equal(getModelMetadata("orvix/kimi-k3:free").cost, undefined);
   assert.equal(getModelMetadata("orvix/atria-dawn-preview").maxOutputTokens, 32_768);
   assert.equal(getModelMetadata("orvix/atria-dawn-preview").toolCalling, false);
   assert.equal(getModelMetadata("orvix/jev").maxOutputTokens, 32_000);

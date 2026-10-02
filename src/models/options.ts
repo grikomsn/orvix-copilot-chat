@@ -54,7 +54,6 @@ const THINKING_PROFILES = new Map<string, ThinkingProfile>([
   ["orvix/deepseek-v4-pro", DEEPSEEK_V4_PRO_PROFILE],
   ["orvix/glm-5.2", GLM_52_PROFILE],
   ["orvix/gpt-5.6-luna", GPT_56_LUNA_PROFILE],
-  ["orvix/gpt-5.6-luna:free", GPT_56_LUNA_PROFILE],
   ["orvix/gpt-5.6-sol", GPT_56_SOL_TERRA_PROFILE],
   ["orvix/gpt-5.6-terra", GPT_56_SOL_TERRA_PROFILE],
 ]);
