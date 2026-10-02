@@ -34,12 +34,18 @@ const GPT_56_SOL_TERRA_PROFILE: ThinkingProfile = {
 /**
  * Resolves a model's thinking profile. Exact ids win; a `:free` route falls
  * back to its paid id so a newly listed free variant inherits the verified
- * profile instead of losing its picker. Families are never matched — Luna and
- * Sol/Terra accept different effort lists, and a prefix rule would offer
- * `minimal` to a model that rejects it.
+ * profile instead of losing its picker. Both lookups then retry with dashes
+ * removed, so a gateway dash-placement change (Orvix lists `qwen-3.8-max`
+ * where sibling providers use `qwen3.8-max`) keeps resolving the same
+ * profile. Families are never matched — Luna and Sol/Terra accept different
+ * effort lists, and a prefix rule would offer `minimal` to a model that
+ * rejects it.
  */
 function thinkingProfile(id: string): ThinkingProfile | undefined {
-  return THINKING_PROFILES.get(id) ?? THINKING_PROFILES.get(id.replace(/:free$/, ""));
+  const paid = id.replace(/:free$/, "");
+  return THINKING_PROFILES.get(id)
+    ?? THINKING_PROFILES.get(paid)
+    ?? THINKING_PROFILES_BY_UNDASHED_ID.get(undashedId(paid));
 }
 
 const THINKING_PROFILES = new Map<string, ThinkingProfile>([
@@ -52,6 +58,14 @@ const THINKING_PROFILES = new Map<string, ThinkingProfile>([
   ["orvix/gpt-5.6-sol", GPT_56_SOL_TERRA_PROFILE],
   ["orvix/gpt-5.6-terra", GPT_56_SOL_TERRA_PROFILE],
 ]);
+
+function undashedId(id: string): string {
+  return id.replace(/-/g, "");
+}
+
+const THINKING_PROFILES_BY_UNDASHED_ID = new Map<string, ThinkingProfile>(
+  [...THINKING_PROFILES].map(([id, profile]) => [undashedId(id), profile]),
+);
 
 /**
  * Model ids whose verified thinking profile includes the "none" value, i.e.
