@@ -36,6 +36,16 @@ test("uses the documented Luna and DeepSeek effort profiles", () => {
     buildThinkingSchema(model("orvix/gpt-5.6-luna:free"))?.properties.reasoningEffort.enum,
     ["none", "low", "medium", "high", "xhigh", "max"],
   );
+  // A :free variant with no exact entry inherits its paid id's profile, while
+  // an exact entry still wins over that fallback.
+  assert.deepEqual(
+    buildThinkingSchema(model("orvix/gpt-5.6-terra:free"))?.properties.reasoningEffort.enum,
+    buildThinkingSchema(model("orvix/gpt-5.6-terra"))?.properties.reasoningEffort.enum,
+  );
+  assert.notDeepEqual(
+    buildThinkingSchema(model("orvix/gpt-5.6-luna:free"))?.properties.reasoningEffort.enum,
+    buildThinkingSchema(model("orvix/gpt-5.6-sol"))?.properties.reasoningEffort.enum,
+  );
   assert.deepEqual(buildThinkingSchema(model("orvix/deepseek-v4-pro"))?.properties.reasoningEffort.enum, [
     "none",
     "low",

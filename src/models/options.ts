@@ -31,6 +31,17 @@ const GPT_56_SOL_TERRA_PROFILE: ThinkingProfile = {
   defaultValue: "high",
 };
 
+/**
+ * Resolves a model's thinking profile. Exact ids win; a `:free` route falls
+ * back to its paid id so a newly listed free variant inherits the verified
+ * profile instead of losing its picker. Families are never matched — Luna and
+ * Sol/Terra accept different effort lists, and a prefix rule would offer
+ * `minimal` to a model that rejects it.
+ */
+function thinkingProfile(id: string): ThinkingProfile | undefined {
+  return THINKING_PROFILES.get(id) ?? THINKING_PROFILES.get(id.replace(/:free$/, ""));
+}
+
 const THINKING_PROFILES = new Map<string, ThinkingProfile>([
   ["orvix/muse-spark-1.2", MUSE_PROFILE],
   ["orvix/muse-spark-1.3", MUSE_PROFILE],
@@ -66,7 +77,7 @@ export function buildThinkingSchema(model: ModelIdentity): {
   properties: Record<string, Record<string, unknown>>;
 } | undefined {
   if (!model.reasoningEffort) return undefined;
-  const profile = THINKING_PROFILES.get(model.id);
+  const profile = thinkingProfile(model.id);
   if (!profile) return undefined;
   return {
     type: "object",
@@ -90,7 +101,7 @@ export function resolveEffortValue(
   workspaceDefault: unknown,
 ): ReasoningEffort | undefined {
   if (!model.reasoningEffort) return undefined;
-  const profile = THINKING_PROFILES.get(model.id);
+  const profile = thinkingProfile(model.id);
   if (!profile) return undefined;
   const requested =
     stringOption(configuration, "reasoningEffort") ??
