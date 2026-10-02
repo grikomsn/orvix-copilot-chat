@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.2
+
+### Patch Changes
+
+- 77a5e0d: Let a `:free` model route inherit its paid id's verified reasoning-effort profile, so a newly listed free variant keeps its reasoning picker instead of losing it.
+
 ## 0.7.1
 
 ### Patch Changes
