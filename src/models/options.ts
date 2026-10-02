@@ -31,16 +31,40 @@ const GPT_56_SOL_TERRA_PROFILE: ThinkingProfile = {
   defaultValue: "high",
 };
 
+/**
+ * Resolves a model's thinking profile. Exact ids win; a `:free` route falls
+ * back to its paid id so a newly listed free variant inherits the verified
+ * profile instead of losing its picker. Both lookups then retry with dashes
+ * removed, so a gateway dash-placement change (Orvix lists `qwen-3.8-max`
+ * where sibling providers use `qwen3.8-max`) keeps resolving the same
+ * profile. Families are never matched — Luna and Sol/Terra accept different
+ * effort lists, and a prefix rule would offer `minimal` to a model that
+ * rejects it.
+ */
+function thinkingProfile(id: string): ThinkingProfile | undefined {
+  const paid = id.replace(/:free$/, "");
+  return THINKING_PROFILES.get(id)
+    ?? THINKING_PROFILES.get(paid)
+    ?? THINKING_PROFILES_BY_UNDASHED_ID.get(undashedId(paid));
+}
+
 const THINKING_PROFILES = new Map<string, ThinkingProfile>([
   ["orvix/muse-spark-1.2", MUSE_PROFILE],
   ["orvix/muse-spark-1.3", MUSE_PROFILE],
   ["orvix/deepseek-v4-pro", DEEPSEEK_V4_PRO_PROFILE],
   ["orvix/glm-5.2", GLM_52_PROFILE],
   ["orvix/gpt-5.6-luna", GPT_56_LUNA_PROFILE],
-  ["orvix/gpt-5.6-luna:free", GPT_56_LUNA_PROFILE],
   ["orvix/gpt-5.6-sol", GPT_56_SOL_TERRA_PROFILE],
   ["orvix/gpt-5.6-terra", GPT_56_SOL_TERRA_PROFILE],
 ]);
+
+function undashedId(id: string): string {
+  return id.replace(/-/g, "");
+}
+
+const THINKING_PROFILES_BY_UNDASHED_ID = new Map<string, ThinkingProfile>(
+  [...THINKING_PROFILES].map(([id, profile]) => [undashedId(id), profile]),
+);
 
 /**
  * Model ids whose verified thinking profile includes the "none" value, i.e.
@@ -66,7 +90,7 @@ export function buildThinkingSchema(model: ModelIdentity): {
   properties: Record<string, Record<string, unknown>>;
 } | undefined {
   if (!model.reasoningEffort) return undefined;
-  const profile = THINKING_PROFILES.get(model.id);
+  const profile = thinkingProfile(model.id);
   if (!profile) return undefined;
   return {
     type: "object",
@@ -90,7 +114,7 @@ export function resolveEffortValue(
   workspaceDefault: unknown,
 ): ReasoningEffort | undefined {
   if (!model.reasoningEffort) return undefined;
-  const profile = THINKING_PROFILES.get(model.id);
+  const profile = thinkingProfile(model.id);
   if (!profile) return undefined;
   const requested =
     stringOption(configuration, "reasoningEffort") ??

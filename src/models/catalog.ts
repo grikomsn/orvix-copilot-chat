@@ -55,17 +55,13 @@ const MANAGED_MODEL_NAMES = new Map<string, string>([
   ["orvix/glm-5.3-flash", "GLM 5.3 Flash"],
   ["orvix/glm-5.3-flash:free", "GLM 5.3 Flash Free"],
   ["orvix/gpt-5.6-luna", "GPT-5.6 Luna"],
-  ["orvix/gpt-5.6-luna:free", "GPT-5.6 Luna Free"],
   ["orvix/gpt-5.6-sol", "GPT-5.6 Sol"],
   ["orvix/gpt-5.6-terra", "GPT-5.6 Terra"],
   ["orvix/grok-4.6", "Grok 4.6"],
   ["orvix/grok-4.7", "Grok 4.7"],
   ["orvix/grok-4.7:free", "Grok 4.7 Free"],
-  ["orvix/grok-4.3:free", "Grok 4.3 Free"],
   ["orvix/deepseek-v4-flash", "DeepSeek V4 Flash"],
-  ["orvix/deepseek-v4-flash:free", "DeepSeek V4 Flash Free"],
   ["orvix/deepseek-v4-pro", "DeepSeek V4 Pro"],
-  ["orvix/gemini-3.5-flash:free", "Gemini 3.5 Flash Free"],
   ["orvix/gemini-3.7-flash", "Gemini 3.7 Flash"],
   ["orvix/gemini-3.8-flash", "Gemini 3.8 Flash"],
   ["orvix/minimax-m3", "MiniMax M3"],
@@ -88,17 +84,13 @@ const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
   modelEntry("orvix/glm-5.3-flash", 450_000, 131_072, true, true),
   modelEntry("orvix/glm-5.3-flash:free", 450_000, 131_072, true, true),
   modelEntry("orvix/gpt-5.6-luna", 450_000, 128_000, true, true, true),
-  modelEntry("orvix/gpt-5.6-luna:free", 450_000, 128_000, true, true, true),
   modelEntry("orvix/gpt-5.6-sol", 450_000, 128_000, true, true, true),
   modelEntry("orvix/gpt-5.6-terra", 450_000, 128_000, true, true, true),
   modelEntry("orvix/grok-4.6", 450_000, 32_768, true, true),
   modelEntry("orvix/grok-4.7", 450_000, 32_768, true, true),
   modelEntry("orvix/grok-4.7:free", 450_000, 32_768, true, true),
-  modelEntry("orvix/grok-4.3:free", 450_000, 32_768, true, true),
   modelEntry("orvix/deepseek-v4-flash", 450_000, 384_000, false, true),
-  modelEntry("orvix/deepseek-v4-flash:free", 450_000, 384_000, true, true),
   modelEntry("orvix/deepseek-v4-pro", 450_000, 384_000, false, true, true),
-  modelEntry("orvix/gemini-3.5-flash:free", 450_000, 32_000, true, true),
   modelEntry("orvix/gemini-3.7-flash", 450_000, 32_000, true, true),
   modelEntry("orvix/gemini-3.8-flash", 450_000, 32_000, true, true),
   modelEntry("orvix/minimax-m3", 450_000, 32_768, false, true),
@@ -141,7 +133,16 @@ export function orderModels(ids: readonly string[]): string[] {
 
 export function getModelMetadata(id: string): OrvixModelMetadata {
   const canonical = canonicalModelId(id);
-  return MANAGED_MODEL_METADATA.get(canonical) ?? model(canonical, DEFAULT_MAX_INPUT_TOKENS, DEFAULT_MAX_OUTPUT_TOKENS);
+  const managed = MANAGED_MODEL_METADATA.get(canonical);
+  if (managed) return managed;
+  if (canonical.endsWith(":free")) {
+    // A free route without its own managed entry inherits its paid id's
+    // verified ceilings; free routes are not billed per token, so cost stays
+    // unset.
+    const paid = MANAGED_MODEL_METADATA.get(canonical.replace(/:free$/, ""));
+    if (paid) return { ...paid, id: canonical, cost: undefined };
+  }
+  return model(canonical, DEFAULT_MAX_INPUT_TOKENS, DEFAULT_MAX_OUTPUT_TOKENS);
 }
 
 export function resolveMaxOutputTokens(configured: number, advertised: number): number {
@@ -202,8 +203,13 @@ export function formatModelName(id: string): string {
   const canonical = canonicalModelId(id);
   const managedName = MANAGED_MODEL_NAMES.get(canonical);
   if (managedName) return managedName;
-  const parts = canonical.replace(/^orvix\//, "").split(/[-\s]+/).filter(Boolean);
-  return parts
+  const isFree = canonical.endsWith(":free");
+  const parts = canonical
+    .replace(/:free$/, "")
+    .replace(/^orvix\//, "")
+    .split(/[-\s]+/)
+    .filter(Boolean);
+  const name = parts
     .map((part) => {
       const family = MANAGED_FAMILY_TOKENS.get(part);
       if (family) return family;
@@ -211,6 +217,7 @@ export function formatModelName(id: string): string {
       return part.charAt(0).toUpperCase() + part.slice(1);
     })
     .join(" ");
+  return isFree ? `${name} Free` : name;
 }
 
 function modelMetadataFromApi(raw: OrvixApiModel): OrvixModelMetadata | undefined {

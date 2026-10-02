@@ -36,12 +36,33 @@ test("uses the documented Luna and DeepSeek effort profiles", () => {
     buildThinkingSchema(model("orvix/gpt-5.6-luna:free"))?.properties.reasoningEffort.enum,
     ["none", "low", "medium", "high", "xhigh", "max"],
   );
+  // A :free variant with no exact entry inherits its paid id's profile, while
+  // an exact entry still wins over that fallback.
+  assert.deepEqual(
+    buildThinkingSchema(model("orvix/gpt-5.6-terra:free"))?.properties.reasoningEffort.enum,
+    buildThinkingSchema(model("orvix/gpt-5.6-terra"))?.properties.reasoningEffort.enum,
+  );
+  assert.notDeepEqual(
+    buildThinkingSchema(model("orvix/gpt-5.6-luna:free"))?.properties.reasoningEffort.enum,
+    buildThinkingSchema(model("orvix/gpt-5.6-sol"))?.properties.reasoningEffort.enum,
+  );
   assert.deepEqual(buildThinkingSchema(model("orvix/deepseek-v4-pro"))?.properties.reasoningEffort.enum, [
     "none",
     "low",
     "high",
     "max",
   ]);
+});
+
+test("resolves profiles dash-insensitively across gateway id conventions", () => {
+  const dashed = buildThinkingSchema(model("orvix/gpt-5.6-luna"));
+  // Sibling providers list the same models with different dash placement
+  // (qwen-3.8 vs qwen3.8); a gateway dash change must not lose a profile.
+  assert.deepEqual(buildThinkingSchema(model("orvix/gpt5.6luna"))?.properties.reasoningEffort.enum, dashed?.properties.reasoningEffort.enum);
+  assert.deepEqual(buildThinkingSchema(model("orvix/gpt5.6luna:free"))?.properties.reasoningEffort.enum, dashed?.properties.reasoningEffort.enum);
+  // Dash-insensitive matching never invents a profile.
+  assert.equal(buildThinkingSchema(model("orvix/qwen3.8max")), undefined);
+  assert.equal(buildThinkingSchema(model("orvix/qwen-3.8-max")), undefined);
 });
 
 test("uses the verified GLM 5.2 and GPT-5.6 Sol/Terra effort profiles", () => {
