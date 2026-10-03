@@ -53,13 +53,11 @@ const MANAGED_MODEL_NAMES = new Map<string, string>([
   ["orvix/mimo-v2.5-pro", "MiMo-V2.5-Pro"],
   ["orvix/glm-5.2", "GLM 5.2"],
   ["orvix/glm-5.3-flash", "GLM 5.3 Flash"],
-  ["orvix/glm-5.3-flash:free", "GLM 5.3 Flash Free"],
   ["orvix/gpt-5.6-luna", "GPT-5.6 Luna"],
   ["orvix/gpt-5.6-sol", "GPT-5.6 Sol"],
   ["orvix/gpt-5.6-terra", "GPT-5.6 Terra"],
   ["orvix/grok-4.6", "Grok 4.6"],
   ["orvix/grok-4.7", "Grok 4.7"],
-  ["orvix/grok-4.7:free", "Grok 4.7 Free"],
   ["orvix/deepseek-v4-flash", "DeepSeek V4 Flash"],
   ["orvix/deepseek-v4-pro", "DeepSeek V4 Pro"],
   ["orvix/gemini-3.7-flash", "Gemini 3.7 Flash"],
@@ -68,6 +66,18 @@ const MANAGED_MODEL_NAMES = new Map<string, string>([
   ["orvix/qwen-3.8-flash", "Qwen 3.8 Flash"],
   ["orvix/qwen-3.8-max", "Qwen 3.8 Max"],
   ["orvix/kimi-k3", "Kimi K3"],
+]);
+
+// Casing for recurring model-family tokens that plain capitalization gets
+// wrong, so unknown future managed IDs render close to vendor naming.
+const MANAGED_FAMILY_TOKENS = new Map<string, string>([
+  ["ai", "AI"],
+  ["gpt", "GPT"],
+  ["glm", "GLM"],
+  ["vl", "VL"],
+  ["mimo", "MiMo"],
+  ["deepseek", "DeepSeek"],
+  ["minimax", "MiniMax"],
 ]);
 
 // The fallback catalogue mirrors Orvix's enforced per-request ceilings and
@@ -103,18 +113,6 @@ export const FALLBACK_MODEL_METADATA: readonly OrvixModelMetadata[] = [
   managedModel("orvix/auto"),
   managedModel("orvix/gpt-5.6-terra"),
 ];
-
-// Casing for recurring model-family tokens that plain capitalization gets
-// wrong, so unknown future managed IDs render close to vendor naming.
-const MANAGED_FAMILY_TOKENS = new Map<string, string>([
-  ["ai", "AI"],
-  ["gpt", "GPT"],
-  ["glm", "GLM"],
-  ["vl", "VL"],
-  ["mimo", "MiMo"],
-  ["deepseek", "DeepSeek"],
-  ["minimax", "MiniMax"],
-]);
 
 const PREFERRED_ORDER = new Map<string, number>(FALLBACK_MODELS.map((id, index) => [id, index]));
 
@@ -217,7 +215,7 @@ export function formatModelName(id: string): string {
       return part.charAt(0).toUpperCase() + part.slice(1);
     })
     .join(" ");
-  return isFree ? `${name} Free` : name;
+  return isFree ? `${name} (Free)` : name;
 }
 
 function modelMetadataFromApi(raw: OrvixApiModel): OrvixModelMetadata | undefined {
