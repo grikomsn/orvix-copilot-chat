@@ -46,13 +46,13 @@ test("formats model IDs for the VS Code picker", () => {
   assert.equal(formatModelName("orvix/gpt-5.6-terra"), "GPT-5.6 Terra");
   assert.equal(formatModelName("orvix/grok-4.6"), "Grok 4.6");
   assert.equal(formatModelName("orvix/grok-4.7"), "Grok 4.7");
-  assert.equal(formatModelName("orvix/grok-4.7:free"), "Grok 4.7 Free");
+  assert.equal(formatModelName("orvix/grok-4.7:free"), "Grok 4.7 (Free)");
   assert.equal(formatModelName("orvix/atria-dawn-preview"), "Atria Dawn Preview");
   assert.equal(formatModelName("orvix/jev"), "Jev");
-  // Unknown free routes render "Free" instead of leaking the suffix into a
-  // token.
-  assert.equal(formatModelName("orvix/kimi-k3:free"), "Kimi K3 Free");
-  assert.equal(formatModelName("orvix/deepseek-v4-flash:free"), "DeepSeek V4 Flash Free");
+  // Unknown free routes render a prettified "(Free)" suffix instead of
+  // leaking the raw `:free` token into the picker label.
+  assert.equal(formatModelName("orvix/kimi-k3:free"), "Kimi K3 (Free)");
+  assert.equal(formatModelName("orvix/deepseek-v4-flash:free"), "DeepSeek V4 Flash (Free)");
   assert.equal(formatModelName("orvix/qwen-3.8-flash"), "Qwen 3.8 Flash");
   assert.equal(formatModelName("orvix/deepseek-v4-pro"), "DeepSeek V4 Pro");
   assert.equal(formatModelName("orvix/minimax-m3"), "MiniMax M3");
