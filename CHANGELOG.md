@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.3
+
+### Patch Changes
+
+- efed46c: Prettify free-route model names: the raw `:free` suffix now renders as a
+  "(Free)" suffix in the model picker, e.g. "Grok 4.7 (Free)" instead of
+  "Grok 4.7 Free".
+
 ## 0.7.2
 
 ### Patch Changes
