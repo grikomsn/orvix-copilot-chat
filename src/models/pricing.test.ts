@@ -26,6 +26,10 @@ test("does not guess Orvix rates when live metadata omits pricing", () => {
   // Managed models fall back to their best-effort upstream estimate.
   assert.deepEqual(orvixModelCost("orvix/muse-spark-1.2"), { input: 1.25, output: 4.25, cacheRead: 0.15 });
   assert.deepEqual(orvixModelCost("orvix/grok-4.7"), { input: 2, output: 6, cacheRead: 0.5 });
+  assert.deepEqual(orvixModelCost("orvix/deepseek-v4.1-flash"), { input: 0.15, output: 0.6, cacheRead: 0.003 });
+  assert.deepEqual(orvixModelCost("orvix/mimo-v2.6-pro"), { input: 0.435, output: 0.87, cacheRead: 0.0036 });
+  assert.deepEqual(orvixModelCost("orvix/hy3"), { input: 0.132, output: 0.528, cacheRead: 0.033 });
+  assert.deepEqual(orvixModelCost("orvix/hy4-preview"), { input: 0.834, output: 2.501, cacheRead: 0.042 });
   assert.equal(orvixModelCost("orvix/grok-4.7:free"), undefined);
   // Live pricing still wins over the bundled estimate.
   assert.deepEqual(orvixModelCost("orvix/example", { input: 1, output: 2 }), { input: 1, output: 2 });
