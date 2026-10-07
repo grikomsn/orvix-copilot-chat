@@ -14,10 +14,11 @@ entries are never merged into a successful response.
 
 Live discovery lists the `orvix/*` models enabled for your project. Documented
 families include `orvix/auto`, `orvix/atria-dawn-preview`, `orvix/jev`, the
-`orvix/muse-spark-*` reasoning models, `orvix/deepseek-v4-pro`, `orvix/glm-*`,
-`orvix/gpt-5.6-*`, `orvix/grok-4.7`, `orvix/gemini-*-flash`, `orvix/minimax-*`,
-`orvix/mimo-*`, `orvix/qwen-*`, and `orvix/kimi-*`, with `:free` variants of
-several families. Free routes inherit their paid id's managed metadata without
+`orvix/muse-spark-*` reasoning models, `orvix/deepseek-v4*`, `orvix/hy*`,
+`orvix/glm-*`, `orvix/gpt-5.6-*`, `orvix/grok-4.7`, `orvix/gemini-*-flash`,
+`orvix/minimax-*`, `orvix/mimo-*`, `orvix/qwen-*`, and `orvix/kimi-*`, with
+`:free` variants that appear and disappear over time (none currently listed).
+Free routes inherit their paid id's managed metadata without
 its per-token cost, and reasoning profiles resolve `:free` ids to their paid
 id. See the [Orvix Platform](https://platform.orvix.id) for the
 current list.

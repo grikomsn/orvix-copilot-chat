@@ -132,6 +132,56 @@ test("mirrors live capabilities for newly added managed models", () => {
   assert.equal(getModelMetadata("orvix/gpt-5.6-luna:free").maxOutputTokens, 128_000);
   assert.equal(getModelMetadata("orvix/kimi-k3:free").maxOutputTokens, 16_384);
   assert.equal(getModelMetadata("orvix/kimi-k3:free").cost, undefined);
+  assert.deepEqual(getModelMetadata("orvix/deepseek-v4.1-flash"), {
+    id: "orvix/deepseek-v4.1-flash",
+    name: "DeepSeek V4.1 Flash",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 131_072,
+    imageInput: false,
+    toolCalling: true,
+    reasoningEffort: true,
+    cost: { input: 0.15, output: 0.6, cacheRead: 0.003 },
+  });
+  assert.deepEqual(getModelMetadata("orvix/mimo-v2.6-pro"), {
+    id: "orvix/mimo-v2.6-pro",
+    name: "MiMo-V2.6-Pro",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 128_000,
+    imageInput: false,
+    toolCalling: true,
+    reasoningEffort: false,
+    cost: { input: 0.435, output: 0.87, cacheRead: 0.0036 },
+  });
+  assert.deepEqual(getModelMetadata("orvix/hy3"), {
+    id: "orvix/hy3",
+    name: "Hy3",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 32_768,
+    imageInput: false,
+    toolCalling: true,
+    reasoningEffort: true,
+    cost: { input: 0.132, output: 0.528, cacheRead: 0.033 },
+  });
+  assert.deepEqual(getModelMetadata("orvix/hy4-preview"), {
+    id: "orvix/hy4-preview",
+    name: "Hy4 Preview",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 32_768,
+    imageInput: false,
+    toolCalling: true,
+    reasoningEffort: true,
+    cost: { input: 0.834, output: 2.501, cacheRead: 0.042 },
+  });
+  // Retired :free routes stay out of the bundled map but still resolve via
+  // paid-id inheritance with cost unset.
+  assert.equal(getModelMetadata("orvix/glm-5.3-flash:free").maxOutputTokens, 131_072);
+  assert.equal(getModelMetadata("orvix/glm-5.3-flash:free").cost, undefined);
+  assert.equal(getModelMetadata("orvix/grok-4.7:free").maxOutputTokens, 32_768);
+  assert.equal(getModelMetadata("orvix/grok-4.7:free").cost, undefined);
   assert.equal(getModelMetadata("orvix/atria-dawn-preview").maxOutputTokens, 32_768);
   assert.equal(getModelMetadata("orvix/atria-dawn-preview").toolCalling, false);
   assert.equal(getModelMetadata("orvix/jev").maxOutputTokens, 32_000);
