@@ -91,8 +91,8 @@ test("provides documented fallback limits", () => {
   });
   assert.equal(formatTokenLimit(1_000_000), "1M");
   assert.equal(formatTokenLimit(262_144), "256K");
-  assert.equal(getModelMetadata("orvix/auto").maxOutputTokens, 16_384);
-  assert.equal(getModelMetadata("orvix/auto").toolCalling, false);
+  assert.equal(getModelMetadata("orvix/auto").maxOutputTokens, 384_000);
+  assert.equal(getModelMetadata("orvix/auto").toolCalling, true);
   assert.equal(getModelMetadata("orvix/auto").cost, undefined);
   assert.equal(getModelMetadata("orvix/deepseek-v4-flash").maxOutputTokens, 384_000);
 });
@@ -256,7 +256,7 @@ test("uses live capability flags without sending undocumented reasoning controls
   assert.equal(live.toolCalling, false);
   assert.equal(live.reasoningEffort, false);
   assert.equal(live.releaseDate, "2023-11-14");
-  assert.equal(getModelMetadata("orvix/auto").reasoningEffort, false);
+  assert.equal(getModelMetadata("orvix/auto").reasoningEffort, true);
 });
 
 test("keeps unknown models conservative while allowing native metadata enrichment", () => {

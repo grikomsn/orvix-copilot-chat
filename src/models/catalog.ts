@@ -84,7 +84,7 @@ const MANAGED_FAMILY_TOKENS = new Map<string, string>([
 // The fallback catalogue mirrors Orvix's enforced per-request ceilings and
 // route capabilities. Live nested capabilities override these values.
 const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
-  modelEntry("orvix/auto", 450_000, 16_384),
+  modelEntry("orvix/auto", 450_000, 384_000, true, true, true),
   modelEntry("orvix/atria-dawn-preview", 450_000, 32_768),
   modelEntry("orvix/jev", 450_000, 32_000),
   modelEntry("orvix/muse-spark-1.2", 450_000, 80_000, true, true, true),
