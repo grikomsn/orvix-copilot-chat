@@ -2,7 +2,7 @@
   "name": "orvix-copilot-chat",
   "displayName": "Orvix for GitHub Copilot Chat",
   "description": "Use Orvix managed and BYOK models in GitHub Copilot Chat with your Orvix API key.",
-  "version": "0.7.5",
+  "version": "1.0.0",
   "publisher": "grikomsn",
   "icon": "assets/icon.png",
   "license": "MIT",
@@ -225,13 +225,13 @@
             "gemini-3-pro-image"
           ],
           "enumDescriptions": [
-            "Black Forest Labs \u00b7 7 Image Credits per image",
-            "Qwen \u00b7 8 credits \u00b7 low soft rate limit",
-            "OpenAI \u00b7 11 credits",
-            "Grok Imagine \u00b7 12 credits",
-            "ByteDance \u00b7 19 credits \u00b7 always one image",
-            "Midjourney \u00b7 22 credits \u00b7 one 4-image grid",
-            "Google \u00b7 61 credits"
+            "Black Forest Labs · 7 Image Credits per image",
+            "Qwen · 8 credits · low soft rate limit",
+            "OpenAI · 11 credits",
+            "Grok Imagine · 12 credits",
+            "ByteDance · 19 credits · always one image",
+            "Midjourney · 22 credits · one 4-image grid",
+            "Google · 61 credits"
           ],
           "description": "Image model used by the orvixImages tool when the caller does not pick one. Configured via Orvix: Set Default Image Model."
         },
