@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import { registerInlineCompletions } from "./autocomplete";
 import { OrvixAuth } from "./auth/auth";
 import { registerCommands } from "./commands/commands";
-import { messageOf } from "./errors";
 import { OrvixImageGenerationTool, ORVIX_IMAGE_TOOL_NAME } from "./images/vscode-tool";
 import { OrvixProvider } from "./provider";
 import { extensionUserAgent } from "./transport/protocol";
@@ -10,14 +9,13 @@ import type { OrvixUsageSnapshot } from "./usage/domain";
 import { renderUsageStatus } from "./usage/presentation";
 
 /** GlobalState key holding the persisted usage snapshot. */
-const USAGE_STATE_KEY = "orvixCopilot.usageSnapshots.v1";
+const USAGE_STATE_KEY = "orvixCopilot.entryUsage.v1";
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel("Orvix");
   const auth = new OrvixAuth(context.secrets);
-  // Restore the persisted snapshot so the status bar is populated before the
-  // first gateway refresh completes.
-  const initialUsage = context.globalState.get<OrvixUsageSnapshot>(USAGE_STATE_KEY) ?? {};
+  // Restore only entry-scoped inference activity; billing balances stay in memory.
+  const initialUsage = context.globalState.get<Record<string, OrvixUsageSnapshot>>(USAGE_STATE_KEY) ?? {};
   const provider = new OrvixProvider(
     auth,
     output,
@@ -28,7 +26,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const usageStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
   usageStatus.name = "Orvix credits and API activity";
   usageStatus.command = "orvixCopilot.showUsage";
-  renderUsageStatus(usageStatus, provider.getUsageSnapshot());
+  renderUsageStatus(usageStatus, provider.getSelectedUsageSnapshot());
   updateUsageStatusVisibility(usageStatus);
 
   context.subscriptions.push(
@@ -37,13 +35,12 @@ export function activate(context: vscode.ExtensionContext): void {
     provider.onDidChangeUsage((usage) => {
       renderUsageStatus(usageStatus, usage);
       updateUsageStatusVisibility(usageStatus);
-      // Persist every mutation so a restart keeps the last known balance.
-      void context.globalState.update(USAGE_STATE_KEY, usage);
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (
         event.affectsConfiguration("orvixCopilot.reasoningEffort") ||
-        event.affectsConfiguration("orvixCopilot.catalogCacheMinutes")
+        event.affectsConfiguration("orvixCopilot.catalogCacheMinutes") ||
+        event.affectsConfiguration("orvixCopilot.managementEntry")
       ) {
         provider.fireDidChange();
       }
@@ -55,16 +52,16 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.lm.registerTool(
       ORVIX_IMAGE_TOOL_NAME,
       new OrvixImageGenerationTool({
-        resolveApiKey: () => auth.getApiKey(),
+        resolveApiKey: async () => provider.getFeatureApiKey("imageEntry"),
         resolveDefaultModel: () =>
           vscode.workspace.getConfiguration("orvixCopilot").get<string>("defaultImageModel") ?? undefined,
         userAgent: extensionUserAgent(context.extension.packageJSON.version, vscode.version),
         output,
       }),
     ),
-    ...registerCommands(auth, provider, output, usageStatus),
+    ...registerCommands(provider, output, usageStatus),
     registerInlineCompletions(context, {
-      resolveApiKey: () => auth.getApiKey(),
+      resolveApiKey: async () => provider.getFeatureApiKey("inlineSuggestionsEntry"),
       output,
       version: context.extension.packageJSON.version as string,
       vscodeVersion: vscode.version,
@@ -74,18 +71,7 @@ export function activate(context: vscode.ExtensionContext): void {
   output.appendLine(
     `[activate] Orvix for Copilot Chat ${context.extension.packageJSON.version} on VS Code ${vscode.version}`,
   );
-  void auth.hasApiKey().then((configured) => {
-    if (!configured) return;
-    updateUsageStatusVisibility(usageStatus);
-    // Kick off usage and model refreshes in the background; failures are
-    // logged but must not block activation.
-    void provider.refreshUsage().catch((error) => {
-      output.appendLine(`[usage] initial refresh failed: ${messageOf(error)}`);
-    });
-    void provider.refreshModels().catch((error) => {
-      output.appendLine(`[models] initial refresh failed: ${messageOf(error)}`);
-    });
-  });
+
 }
 
 /** Shows or hides the usage status bar based on the `showUsageStatusBar` setting. */

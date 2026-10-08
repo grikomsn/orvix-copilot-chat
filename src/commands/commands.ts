@@ -3,7 +3,6 @@
 import * as vscode from "vscode";
 import { CONFIG_SECTION, DEFAULT_INLINE_MODEL, INLINE_SUGGESTIONS_MODEL_SETTING } from "../autocomplete/config";
 import { inlineModelChoices } from "../autocomplete/models";
-import { OrvixAuth } from "../auth/auth";
 import { messageOf } from "../errors";
 import {
   DEFAULT_IMAGE_MODEL,
@@ -32,16 +31,18 @@ const IMAGE_MODEL_NOTES: Readonly<Record<string, string>> = {
 };
 
 export function registerCommands(
-  auth: OrvixAuth,
   provider: OrvixProvider,
   output: vscode.OutputChannel,
   usageStatus?: vscode.StatusBarItem,
 ): vscode.Disposable[] {
   return [
-    vscode.commands.registerCommand("orvixCopilot.manage", () => manage(auth, provider, output, usageStatus)),
-    vscode.commands.registerCommand("orvixCopilot.configureApiKey", () => configureApiKey(provider, output)),
+    vscode.commands.registerCommand("orvixCopilot.manage", () => manage(provider, output, usageStatus)),
+    vscode.commands.registerCommand("orvixCopilot.selectEntry", () => selectEntry(provider, "managementEntry")),
+    vscode.commands.registerCommand("orvixCopilot.selectInlineEntry", () => selectEntry(provider, "inlineSuggestionsEntry")),
+    vscode.commands.registerCommand("orvixCopilot.selectImageEntry", () => selectEntry(provider, "imageEntry")),
+    vscode.commands.registerCommand("orvixCopilot.forgetEntry", () => forgetEntry(provider)),
+    vscode.commands.registerCommand("orvixCopilot.restoreEntry", () => restoreEntry(provider)),
     vscode.commands.registerCommand("orvixCopilot.configureGatewaySession", () => configureGatewaySession(provider, output)),
-    vscode.commands.registerCommand("orvixCopilot.removeApiKey", () => removeApiKey(provider)),
     vscode.commands.registerCommand("orvixCopilot.removeGatewaySession", () => removeGatewaySession(provider)),
     vscode.commands.registerCommand("orvixCopilot.refreshModels", () => refreshModels(provider)),
     vscode.commands.registerCommand("orvixCopilot.setInlineSuggestionsModel", () => setInlineSuggestionsModel()),
@@ -50,104 +51,89 @@ export function registerCommands(
     vscode.commands.registerCommand("orvixCopilot.setDefaultImageModel", () => setDefaultImageModel(output)),
     vscode.commands.registerCommand("orvixCopilot.testConnection", () => testConnection(provider, output)),
     vscode.commands.registerCommand("orvixCopilot.openApiKeys", () => openApiKeys()),
-    vscode.commands.registerCommand("orvixCopilot.diagnostics", () => diagnostics(auth, output)),
+    vscode.commands.registerCommand("orvixCopilot.diagnostics", () => diagnostics(provider, output)),
   ];
 }
 
 async function manage(
-  auth: OrvixAuth,
   provider: OrvixProvider,
   output: vscode.OutputChannel,
   usageStatus?: vscode.StatusBarItem,
 ): Promise<void> {
-  const configured = await auth.hasApiKey();
-  const choices = configured
-    ? [
-        { label: "$(check) Test Orvix inference", action: "test" },
-        { label: "$(refresh) Refresh available models", action: "refresh" },
-        { label: "$(zap) Set inline suggestions model", action: "inlineModel" },
-        { label: "$(device-camera) Set default image model", action: "imageModel" },
-        { label: "$(credit-card) Show usage and credits", action: "usage" },
-        { label: "$(graph) Open Orvix usage", action: "open-usage" },
-        { label: "$(account) Import usage session", action: "session" },
-        { label: "$(key) Replace API key", action: "configure" },
-        { label: "$(link-external) Open Orvix API keys", action: "open" },
-        { label: "$(output) Show Orvix logs", action: "logs" },
-        { label: "$(info) Show diagnostics", action: "diagnostics" },
-        { label: "$(trash) Remove API key", action: "remove" },
-      ]
-    : [
-        { label: "$(key) Configure Orvix API key", action: "configure" },
-        { label: "$(link-external) Open Orvix API keys", action: "open" },
-        { label: "$(output) Show Orvix logs", action: "logs" },
-      ];
-  const picked = await vscode.window.showQuickPick(choices, {
-    title: `Orvix — API key ${configured ? "configured" : "not configured"}`,
-  });
+  const choices = [
+    { label: "$(settings-gear) Manage Language Models", action: "models" },
+    { label: "$(account) Select management entry", action: "entry" },
+    { label: "$(zap) Select inline suggestions entry", action: "inlineEntry" },
+    { label: "$(device-camera) Select image generation entry", action: "imageEntry" },
+    { label: "$(check) Test selected entry inference", action: "test" },
+    { label: "$(refresh) Refresh selected entry models", action: "refresh" },
+    { label: "$(zap) Set inline suggestions model", action: "inlineModel" },
+    { label: "$(device-camera) Set default image model", action: "imageModel" },
+    { label: "$(credit-card) Show selected entry usage and credits", action: "usage" },
+    { label: "$(account) Bind billing session to selected entry", action: "session" },
+    { label: "$(trash) Remove selected entry billing session", action: "removeSession" },
+    { label: "$(trash) Forget entry before removing it", action: "forget" },
+    { label: "$(history) Restore forgotten native entry", action: "restore" },
+    { label: "$(link-external) Open Orvix API keys", action: "open" },
+    { label: "$(output) Show Orvix logs", action: "logs" },
+    { label: "$(info) Show diagnostics", action: "diagnostics" },
+  ];
+  const picked = await vscode.window.showQuickPick(choices, { title: "Orvix — Manage native entries" });
   if (!picked) return;
-  if (picked.action === "configure") await configureApiKey(provider, output);
+  if (picked.action === "models") await vscode.commands.executeCommand("workbench.action.chat.manageLanguageModels");
+  else if (picked.action === "entry") await selectEntry(provider, "managementEntry");
+  else if (picked.action === "inlineEntry") await selectEntry(provider, "inlineSuggestionsEntry");
+  else if (picked.action === "imageEntry") await selectEntry(provider, "imageEntry");
+  else if (picked.action === "forget") await forgetEntry(provider);
+  else if (picked.action === "restore") await restoreEntry(provider);
+  else if (picked.action === "removeSession") await removeGatewaySession(provider);
   else if (picked.action === "refresh") await refreshModels(provider);
   else if (picked.action === "inlineModel") await setInlineSuggestionsModel();
   else if (picked.action === "imageModel") await setDefaultImageModel(output);
   else if (picked.action === "test") await testConnection(provider, output);
   else if (picked.action === "usage") await showUsage(provider, output, usageStatus);
   else if (picked.action === "session") await configureGatewaySession(provider, output);
-  else if (picked.action === "open-usage") await openUsage();
   else if (picked.action === "open") await openApiKeys();
   else if (picked.action === "logs") output.show(true);
-  else if (picked.action === "diagnostics") await diagnostics(auth, output);
-  else if (picked.action === "remove") await removeApiKey(provider);
+  else if (picked.action === "diagnostics") await diagnostics(provider, output);
 }
 
-async function configureApiKey(provider: OrvixProvider, output: vscode.OutputChannel): Promise<boolean> {
-  const apiKey = await vscode.window.showInputBox({
-    title: "Configure Orvix API key",
-    prompt: "The key is validated with Orvix, then stored in VS Code Secret Storage.",
-    placeHolder: "orv-sk_live_…",
-    password: true,
-    ignoreFocusOut: true,
-    validateInput: (value) =>
-      value.trim().startsWith("orv-sk_live_") ? undefined : "Orvix API keys start with orv-sk_live_",
+async function selectEntry(provider: OrvixProvider, setting: string): Promise<void> {
+  const picked = await vscode.window.showQuickPick(provider.getEntries().map(({ entryId }) => ({ label: entryId })), {
+    title: "Orvix — Select native entry", placeHolder: "Add entries with unique entryId values in Manage Language Models",
   });
-  if (!apiKey) return false;
-
-  try {
-    const models = await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: "Validating Orvix API key…",
-      },
-      () => provider.configureApiKey(apiKey),
-    );
-    output.appendLine(`[auth] API key configured; models=${models.join(",")}`);
-    vscode.window.showInformationMessage(`Orvix connected. Found ${models.length} available models.`);
-    return true;
-  } catch (error) {
-    const message = messageOf(error);
-    output.appendLine(`[auth] API key validation failed: ${message}`);
-    vscode.window.showErrorMessage(`Orvix API key was not saved: ${message}`);
-    return false;
-  }
+  if (!picked) return;
+  await vscode.workspace.getConfiguration(CONFIG_SECTION).update(setting, picked.label, vscode.ConfigurationTarget.Global);
+  provider.fireDidChange();
 }
 
-async function removeApiKey(provider: OrvixProvider): Promise<void> {
-  const choice = await vscode.window.showWarningMessage(
-    "Remove the Orvix API key from VS Code Secret Storage?",
-    { modal: true },
-    "Remove API Key",
-  );
-  if (choice !== "Remove API Key") return;
-  await provider.clearApiKey();
-  vscode.window.showInformationMessage("Orvix API key removed.");
+async function forgetEntry(provider: OrvixProvider): Promise<void> {
+  const ids = new Set([...provider.getEntries().map(({ entryId }) => entryId), ...Object.keys(provider.getObservedEntries())]);
+  const picked = await vscode.window.showQuickPick([...ids].map((label) => ({ label })), {
+    title: "Orvix — Forget entry", placeHolder: "Retire cached credentials and billing before removing the native entry",
+  });
+  if (!picked) return;
+  await provider.forgetEntry(picked.label);
+  await vscode.commands.executeCommand("workbench.action.chat.manageLanguageModels");
+}
+
+async function restoreEntry(provider: OrvixProvider): Promise<void> {
+  const picked = await vscode.window.showQuickPick(provider.getForgottenEntries().map((label) => ({ label })), {
+    title: "Orvix — Restore native entry", placeHolder: "Allow VS Code to provision this ID again; its billing session must be re-imported",
+  });
+  if (!picked) return;
+  await provider.restoreEntry(picked.label);
+  await vscode.commands.executeCommand("workbench.action.chat.manageLanguageModels");
 }
 
 async function configureGatewaySession(provider: OrvixProvider, output: vscode.OutputChannel): Promise<boolean> {
+  const entry = provider.selectedEntry();
   // Extract the session object JSON from the platform page. It looks like
   // {"token":"...","refreshToken":"...","user":{...}}.
   const raw = await vscode.window.showInputBox({
-    title: "Import Orvix browser session",
+    title: `Bind Orvix billing session to ${entry.entryId}`,
     prompt:
-      "Open platform.orvix.id, run `JSON.parse(localStorage['orvix.auth.session'])`, and paste the \"token\" value (or the whole JSON object).",
+      `Confirm this browser account owns entry ${entry.entryId}. Open platform.orvix.id, run JSON.parse(localStorage['orvix.auth.session']), and paste the \"token\" value (or the whole JSON object).`,
     placeHolder: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…",
     password: true,
     ignoreFocusOut: true,
@@ -160,7 +146,7 @@ async function configureGatewaySession(provider: OrvixProvider, output: vscode.O
     return false;
   }
   try {
-    await provider.configureGatewaySession(session);
+    await provider.configureGatewaySession(session, entry);
     output.appendLine("[auth] gateway session imported");
     vscode.window.showInformationMessage("Orvix usage session imported. Refreshing credits and usage…");
     return true;
@@ -283,9 +269,7 @@ async function testConnection(provider: OrvixProvider, output: vscode.OutputChan
       },
       () => provider.testConnection(),
     );
-    output.appendLine(
-      `[test] model=${result.model} effort=${result.reasoningEffort ?? "model-default"} response=${result.text}`,
-    );
+    output.appendLine(`[test] model=${result.model} completed`);
     vscode.window.showInformationMessage(
       `Orvix verified with ${result.model}${result.reasoningEffort ? ` (${result.reasoningEffort} effort)` : ""}: ${result.text}`,
     );
@@ -328,7 +312,7 @@ async function showUsage(provider: OrvixProvider, output: vscode.OutputChannel, 
     { label: "$(link-external) Open Billing & Credits", description: "platform.orvix.id/billing", action: "openBilling" },
   ];
   const picked = await vscode.window.showQuickPick([...rows, ...actions], {
-    title: "Orvix usage and credits",
+    title: `Orvix usage and credits — ${provider.selectedEntry().entryId}`,
     placeHolder: "Credits, requests, and spend",
   });
   if (!picked?.action) return;
@@ -349,14 +333,14 @@ async function showUsage(provider: OrvixProvider, output: vscode.OutputChannel, 
   }
 }
 
-async function diagnostics(auth: OrvixAuth, output: vscode.OutputChannel): Promise<void> {
+async function diagnostics(provider: OrvixProvider, output: vscode.OutputChannel): Promise<void> {
   const models = await vscode.lm.selectChatModels({ vendor: "orvix" });
   const lines = [
     "# Orvix for Copilot Chat diagnostics",
     "",
     `- VS Code: ${vscode.version}`,
     `- API endpoint: ${API_BASE}`,
-    `- API key: ${(await auth.hasApiKey()) ? "configured in Secret Storage" : "missing"}`,
+    `- Native entries available: ${provider.getEntries().length}`,
     `- Default reasoning effort: ${vscode.workspace.getConfiguration("orvixCopilot").get("reasoningEffort", "high")}`,
     `- Registered models: ${models.length}`,
     "",

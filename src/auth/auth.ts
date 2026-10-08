@@ -1,83 +1,52 @@
 import { createHash } from "node:crypto";
 
-export const API_KEY_SECRET = "orvixCopilot.apiKey";
-export const GATEWAY_SESSION_SECRET = "orvixCopilot.gatewaySession";
-
+const GATEWAY_SESSION_PREFIX = "orvixCopilot.entryGatewaySession.v1.";
 export function credentialReference(apiKey: string): string {
   return createHash("sha256").update(apiKey.trim()).digest("hex").slice(0, 16);
 }
-
-/**
- * A browser gateway session used to read billing and usage. The access token
- * is short-lived (~1h) and backed by a rotating refresh token.
- */
-export interface GatewaySession {
-  token: string;
-  refreshToken?: string;
-}
-
+export interface GatewaySession { token: string; refreshToken?: string }
 export interface SecretStore {
   get(key: string): PromiseLike<string | undefined>;
   store(key: string, value: string): PromiseLike<void>;
   delete(key: string): PromiseLike<void>;
 }
 
+/** A browser billing session is explicitly bound by the user to one native entry. */
 export class OrvixAuth {
+  private readonly mutations = new Map<string, Promise<void>>();
   constructor(private readonly secrets: SecretStore) {}
-
-  async hasApiKey(): Promise<boolean> {
-    return Boolean(await this.getApiKey());
-  }
-
-  async getApiKey(): Promise<string | undefined> {
-    const value = await this.secrets.get(API_KEY_SECRET);
-    return value?.trim() || undefined;
-  }
-
-  async storeApiKey(value: string): Promise<void> {
-    const apiKey = value.trim();
-    if (!apiKey) throw new Error("Orvix API key cannot be empty");
-    if (!apiKey.startsWith("orv-sk_live_")) throw new Error("Orvix API keys must start with orv-sk_live_");
-    await this.secrets.store(API_KEY_SECRET, apiKey);
-  }
-
-  async clearApiKey(): Promise<void> {
-    await this.secrets.delete(API_KEY_SECRET);
-  }
-
-  /** Returns the stored gateway session, if any. */
-  async getGatewaySession(): Promise<GatewaySession | undefined> {
-    const raw = await this.secrets.get(GATEWAY_SESSION_SECRET);
+  async getGatewaySession(entryId: string, credentialRef: string): Promise<GatewaySession | undefined> {
+    await this.mutations.get(entryId)?.catch(() => undefined);
+    const raw = await this.secrets.get(this.key(entryId));
     if (!raw) return undefined;
     try {
-      const parsed = JSON.parse(raw) as Partial<GatewaySession>;
-      const token = typeof parsed.token === "string" ? parsed.token.trim() : "";
-      if (!token) return undefined;
+      const parsed = JSON.parse(raw) as Partial<GatewaySession> & { credentialRef?: string };
+      if (parsed.credentialRef !== credentialRef || typeof parsed.token !== "string" || !parsed.token.trim()) return undefined;
       return {
-        token,
-        ...(typeof parsed.refreshToken === "string" && parsed.refreshToken.trim()
-          ? { refreshToken: parsed.refreshToken.trim() }
-          : {}),
+        token: parsed.token.trim(),
+        ...(typeof parsed.refreshToken === "string" && parsed.refreshToken.trim() ? { refreshToken: parsed.refreshToken.trim() } : {}),
       };
-    } catch {
-      return undefined;
-    }
+    } catch { return undefined; }
   }
-
-  /** Persists a gateway session for billing/usage access. */
-  async storeGatewaySession(session: GatewaySession): Promise<void> {
-    const token = session.token.trim();
-    if (!token) throw new Error("Orvix session token cannot be empty");
-    await this.secrets.store(
-      GATEWAY_SESSION_SECRET,
-      JSON.stringify({
-        token,
-        ...(session.refreshToken?.trim() ? { refreshToken: session.refreshToken.trim() } : {}),
-      }),
-    );
+  async storeGatewaySession(entryId: string, credentialRef: string, session: GatewaySession): Promise<void> {
+    if (!session.token.trim()) throw new Error("Orvix session token cannot be empty");
+    const key = this.key(entryId);
+    await this.mutate(entryId, () => this.secrets.store(key, JSON.stringify({
+      credentialRef, token: session.token.trim(),
+      ...(session.refreshToken?.trim() ? { refreshToken: session.refreshToken.trim() } : {}),
+    })));
   }
-
-  async clearGatewaySession(): Promise<void> {
-    await this.secrets.delete(GATEWAY_SESSION_SECRET);
+  async clearGatewaySession(entryId: string): Promise<void> {
+    const key = this.key(entryId);
+    await this.mutate(entryId, () => this.secrets.delete(key));
+  }
+  private async mutate(entryId: string, action: () => PromiseLike<void>): Promise<void> {
+    const next = (this.mutations.get(entryId) ?? Promise.resolve()).catch(() => undefined).then(action);
+    this.mutations.set(entryId, next);
+    try { await next; } finally { if (this.mutations.get(entryId) === next) this.mutations.delete(entryId); }
+  }
+  private key(entryId: string): string {
+    if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(entryId)) throw new Error("Invalid Orvix entryId");
+    return `${GATEWAY_SESSION_PREFIX}${entryId}`;
   }
 }

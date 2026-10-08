@@ -46,14 +46,6 @@
         "title": "Orvix: Manage Connection"
       },
       {
-        "command": "orvixCopilot.configureApiKey",
-        "title": "Orvix: Configure API Key"
-      },
-      {
-        "command": "orvixCopilot.removeApiKey",
-        "title": "Orvix: Remove API Key"
-      },
-      {
         "command": "orvixCopilot.refreshModels",
         "title": "Orvix: Refresh Models"
       },
@@ -88,6 +80,26 @@
       {
         "command": "orvixCopilot.diagnostics",
         "title": "Orvix: Show Diagnostics"
+      },
+      {
+        "command": "orvixCopilot.selectEntry",
+        "title": "Orvix: Select Management Entry"
+      },
+      {
+        "command": "orvixCopilot.selectInlineEntry",
+        "title": "Orvix: Select Inline Suggestions Entry"
+      },
+      {
+        "command": "orvixCopilot.selectImageEntry",
+        "title": "Orvix: Select Image Generation Entry"
+      },
+      {
+        "command": "orvixCopilot.forgetEntry",
+        "title": "Orvix: Forget Native Entry"
+      },
+      {
+        "command": "orvixCopilot.restoreEntry",
+        "title": "Orvix: Restore Native Entry"
       }
     ],
     "configuration": {
@@ -213,15 +225,30 @@
             "gemini-3-pro-image"
           ],
           "enumDescriptions": [
-            "Black Forest Labs · 7 Image Credits per image",
-            "Qwen · 8 credits · low soft rate limit",
-            "OpenAI · 11 credits",
-            "Grok Imagine · 12 credits",
-            "ByteDance · 19 credits · always one image",
-            "Midjourney · 22 credits · one 4-image grid",
-            "Google · 61 credits"
+            "Black Forest Labs \u00b7 7 Image Credits per image",
+            "Qwen \u00b7 8 credits \u00b7 low soft rate limit",
+            "OpenAI \u00b7 11 credits",
+            "Grok Imagine \u00b7 12 credits",
+            "ByteDance \u00b7 19 credits \u00b7 always one image",
+            "Midjourney \u00b7 22 credits \u00b7 one 4-image grid",
+            "Google \u00b7 61 credits"
           ],
           "description": "Image model used by the orvixImages tool when the caller does not pick one. Configured via Orvix: Set Default Image Model."
+        },
+        "orvixCopilot.managementEntry": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit native entryId used for models, usage, billing session imports, and connection tests. Select an available entry through Orvix: Manage Connection. No automatic fallback."
+        },
+        "orvixCopilot.inlineSuggestionsEntry": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit native entryId used for inline suggestions. Select an available entry through Orvix: Manage Connection. No automatic fallback."
+        },
+        "orvixCopilot.imageEntry": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit native entryId used for image generation. Select an available entry through Orvix: Manage Connection. No automatic fallback."
         }
       }
     },
@@ -232,6 +259,7 @@
         "configuration": {
           "type": "object",
           "required": [
+            "entryId",
             "apiKey"
           ],
           "properties": {
@@ -240,6 +268,14 @@
               "title": "Orvix API Key",
               "description": "API key for this Orvix provider entry. VS Code stores configured secrets securely.",
               "secret": true
+            },
+            "entryId": {
+              "type": "string",
+              "title": "Unique Entry ID",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "Unique stable ID for this entry, such as personal or work. Keep it when rotating the key. Native group names are display labels and do not identify credentials."
             }
           }
         }

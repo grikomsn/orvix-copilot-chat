@@ -15,20 +15,22 @@ export interface ChatStreamEvent {
 
 export class ChatCompletionStreamParser {
   private buffer = "";
-  private readonly pendingTools = new Map<number, PendingToolCall>();
+  private readonly pendingTools = new Map<string, PendingToolCall>();
+  private readonly toolAliases = new Map<string, string>();
   private lastFinishReason: string | undefined;
 
   get finishReason(): string | undefined { return this.lastFinishReason; }
 
   push(chunk: string): ChatStreamEvent[] {
-    this.buffer += chunk.replace(/\r\n/g, "\n");
+    this.buffer += chunk;
     const events: ChatStreamEvent[] = [];
-    let boundary: number;
-    while ((boundary = this.buffer.indexOf("\n\n")) >= 0) {
-      const block = this.buffer.slice(0, boundary);
-      this.buffer = this.buffer.slice(boundary + 2);
+    let boundary = /\r?\n\r?\n/.exec(this.buffer);
+    while (boundary?.index !== undefined) {
+      const block = this.buffer.slice(0, boundary.index);
+      this.buffer = this.buffer.slice(boundary.index + boundary[0].length);
       const event = this.parseBlock(block);
       if (event) events.push(event);
+      boundary = /\r?\n\r?\n/.exec(this.buffer);
     }
     return events;
   }
@@ -45,7 +47,7 @@ export class ChatCompletionStreamParser {
 
   private parseBlock(block: string): ChatStreamEvent | undefined {
     const data = block
-      .split("\n")
+      .split(/\r?\n/)
       .filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trimStart())
       .join("\n")
@@ -96,21 +98,30 @@ export class ChatCompletionStreamParser {
 
   private collectTools(value: unknown): void {
     if (!Array.isArray(value)) return;
-    for (const raw of value) {
+    for (const [position, raw] of value.entries()) {
       if (!isRecord(raw)) continue;
-      const index = typeof raw.index === "number" ? raw.index : this.pendingTools.size;
-      const current = this.pendingTools.get(index) ?? { id: "", name: "", arguments: "" };
-      if (typeof raw.id === "string" && raw.id) current.id = raw.id;
+      const id = typeof raw.id === "string" && raw.id ? raw.id : undefined;
+      const index = typeof raw.index === "number" ? `index:${raw.index}` : undefined;
+      const idAlias = id ? `id:${id}` : undefined;
+      const key = (index && this.toolAliases.get(index)) ?? (idAlias && this.toolAliases.get(idAlias)) ?? index ?? idAlias ?? `slot:${position}`;
+      const current = this.pendingTools.get(key) ?? { id: "", name: "", arguments: "" };
+      if (id) current.id = id;
+      if (index) this.toolAliases.set(index, key);
+      if (idAlias) this.toolAliases.set(idAlias, key);
       const fn = isRecord(raw.function) ? raw.function : undefined;
-      if (typeof fn?.name === "string") current.name += fn.name;
+      if (typeof fn?.name === "string" && fn.name) {
+        if (!current.name || fn.name.startsWith(current.name)) current.name = fn.name;
+        else if (fn.name !== current.name) current.name += fn.name;
+      }
       if (typeof fn?.arguments === "string") current.arguments += fn.arguments;
-      this.pendingTools.set(index, current);
+      this.pendingTools.set(key, current);
     }
   }
 
   private flushTools(): PendingToolCall[] {
     const tools = [...this.pendingTools.values()].filter((tool) => tool.name).map(completeToolCall);
     this.pendingTools.clear();
+    this.toolAliases.clear();
     return tools;
   }
 }

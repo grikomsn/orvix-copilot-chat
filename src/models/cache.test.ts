@@ -13,6 +13,6 @@ test("restores only complete persisted Orvix catalogs", () => {
     toolCalling: true,
     reasoningEffort: false,
   };
-  assert.deepEqual(parseCatalogSnapshots({ legacy: [model], broken: [{ id: "bad" }] }), { legacy: [model] });
+  assert.deepEqual(parseCatalogSnapshots({ work: [model], empty: [], broken: [{ id: "bad" }] }), { work: [model], empty: [] });
   assert.deepEqual(parseCatalogSnapshots(null), {});
 });

@@ -56,3 +56,28 @@ test("validates stream completion reasons", () => {
   assert.throws(() => validateStreamCompletion(undefined), /before a completion reason/);
   assert.throws(() => validateStreamCompletion("length"), /output token limit/);
 });
+
+test("routes ID-only fragments back to their indexed parallel calls", () => {
+  const parser = new ChatCompletionStreamParser();
+  const event = (delta: unknown, finish_reason?: string): string => `data: ${JSON.stringify({ choices: [{ delta, finish_reason }] })}\r\n\r\n`;
+  const input = event({ tool_calls: [
+    { index: 0, id: "a", function: { name: "read", arguments: '{"file":"' } },
+    { index: 1, id: "b", function: { name: "read", arguments: '{"file":"' } },
+  ] }) + event({ tool_calls: [{ id: "b", function: { name: "read", arguments: 'b"}' } }] }) +
+    event({ tool_calls: [{ id: "a", function: { arguments: 'a"}' } }] }, "tool_calls");
+  const events = [...input].flatMap((character) => parser.push(character));
+  assert.equal(events.length, 1);
+  assert.deepEqual(events[0].toolCalls, [
+    { id: "a", name: "read", arguments: '{"file":"a"}' },
+    { id: "b", name: "read", arguments: '{"file":"b"}' },
+  ]);
+  assert.deepEqual(parser.finish(), []);
+});
+
+test("streams text before EOF across split CRLF boundaries", () => {
+  const parser = new ChatCompletionStreamParser();
+  assert.deepEqual(parser.push('data: {"choices":[{"delta":{"content":"first"}}]}\r'), []);
+  assert.deepEqual(parser.push('\n\r'), []);
+  assert.deepEqual(parser.push('\n'), [{ text: "first" }]);
+  assert.throws(() => validateStreamCompletion(parser.finishReason), /before a completion reason/);
+});

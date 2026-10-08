@@ -4,7 +4,7 @@
  * The tool is not an Orvix chat hosted tool: the model selects it through the
  * ordinary function-tool protocol, and VS Code invokes
  * {@link OrvixImageGenerationTool.invoke}, which calls the fixed
- * `POST /v1/images/generations` endpoint with the stored API key. Generated
+ * `POST /v1/images/generations` endpoint with the explicitly selected native entry API key. Generated
  * images are returned as tool-result text (URLs plus the credits spent); image
  * bytes are never inlined into the model context. All testable logic lives in
  * the VS Code-free `./tool-logic` module.
@@ -57,7 +57,7 @@ export class OrvixImageGenerationTool implements vscode.LanguageModelTool<ImageT
     }
     const apiKey = await this.dependencies.resolveApiKey();
     if (!apiKey) {
-      throw new Error("An Orvix API key is required for image generation. Run ‘Orvix: Configure API Key’.");
+      throw new Error("An Orvix API key is required for image generation. Run ‘Orvix: Select Image Generation Entry’.");
     }
 
     const client = new ImageGenerationClient({
