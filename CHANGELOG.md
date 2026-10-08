@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.5
+
+### Patch Changes
+
+- 8a77d27: Mirror the live `orvix/auto` route capabilities in the bundled fallback metadata: 384,000-token output ceiling with vision, tool calling, and reasoning-effort controls
+
 ## 0.7.4
 
 ### Patch Changes
