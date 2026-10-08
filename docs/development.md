@@ -10,7 +10,9 @@ npm run check
 npm run package
 ```
 
-Press F5 with the repository launch configuration to open an Extension Development Host. Add an Orvix provider entry from Copilot Chat's model management UI and use a project-scoped key with `ai:invoke`.
+Press F5 with the repository launch configuration to open an Extension Development Host. Add an Orvix provider entry with a unique `entryId` and a project-scoped key with `ai:invoke`.
+
+`test/native/index.js` exports `run()` for a VS Code extension-test host. It uses actual response parts and cancellation with injected synthetic HTTP and keys, checking parallel tools, follow-up history, credential rotation/removal, independent inline/image selections, billing ownership, and stream cleanup. It changes and restores only the three Orvix entry selectors in the isolated host. These tests do not prove live paid inference or billing.
 
 ## Architecture
 
@@ -25,14 +27,14 @@ flowchart TD
   end
 
   subgraph SECRET["SecretStorage"]
-    KEY[(API key<br/>orvixCopilot.apiKey)]
-    GW[(Gateway session<br/>orvixCopilot.gatewaySession)]
+    KEY[(Native provider API key<br/>VS Code-owned)]
+    GW[(Entry-bound gateway session)]
   end
 
   subgraph STATE["globalState (Memento)"]
-    CAT[(orvixCopilot.catalogs.v1)]
+    CAT[(orvixCopilot.entryCatalogs.v1)]
     DEV[(models.dev metadata<br/>TTL 6h)]
-    USAGE[(orvixCopilot.usageSnapshots.v1)]
+    USAGE[(orvixCopilot.entryUsage.v1)]
   end
 
   subgraph ORVIX["api.orvix.id"]
@@ -69,9 +71,9 @@ flowchart TD
 
 Key properties:
 
-- Two credential principals: an API key (`orv-sk_live_…`) for inference and a browser gateway session for billing/usage only. Both live only in `SecretStorage`.
-- The live `/models` response is authoritative for that key and persisted per credential; cached or fallback models are served when a refresh fails.
-- Streaming is incremental: chunks become text, thinking, and tool-call progress events, and usage is captured into the snapshot that feeds the status bar.
+- Two credential principals: an API key (`orv-sk_live_…`) for inference and a browser gateway session for billing/usage only. VS Code owns native inference keys; explicitly bound browser sessions live in `SecretStorage`.
+- The live `/models` response, including an empty directory, is authoritative for that entry and persisted per credential. Cached or fallback models are served only when a refresh fails.
+- Streaming is incremental. A request-scoped reporter emits thinking before text, closes it before tools and at every terminal path, and assigns distinct fallback call IDs. The SSE parser joins indexed and ID-only fragments for each parallel tool and accepts CRLF split across transport chunks.
 - Retries are pre-stream only, on network errors and HTTP 502/503/504, and never retry cancellation or a started stream.
 
 ## Provider invariants

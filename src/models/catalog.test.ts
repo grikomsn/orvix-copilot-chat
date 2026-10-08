@@ -375,10 +375,10 @@ test("uses only live pricing because Orvix managed rates are not in the model AP
   assert.deepEqual(managed.cost, { input: 4, output: 20, cacheRead: 0.4 });
 });
 
-test("falls back only when discovery returns no chat models", () => {
+test("keeps a successful empty model directory authoritative", () => {
   assert.deepEqual(
     orderModelMetadata([]).map(({ id }) => id),
-    [...FALLBACK_MODELS],
+    [],
   );
 });
 

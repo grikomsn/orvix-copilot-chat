@@ -6,7 +6,7 @@ export function parseCatalogSnapshots(value: unknown): Record<string, OrvixModel
     Object.entries(value).flatMap(([credentialRef, raw]) => {
       if (!Array.isArray(raw)) return [];
       const models = raw.flatMap((entry) => (validModel(entry) ? [entry] : []));
-      return models.length === raw.length && models.length ? [[credentialRef, models]] : [];
+      return models.length === raw.length ? [[credentialRef, models]] : [];
     }),
   );
 }

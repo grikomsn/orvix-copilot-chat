@@ -13,11 +13,11 @@ test("declares native API-key configuration without a management-command overrid
     required?: string[];
     properties?: Record<string, { secret?: boolean }>;
   };
-  assert.deepEqual(configuration.required, ["apiKey"]);
+  assert.deepEqual(configuration.required, ["entryId", "apiKey"]);
   assert.equal(configuration.properties?.apiKey.secret, true);
 });
 
-test("keeps the legacy management commands available for the Secret Storage key", () => {
+test("keeps entry management and billing commands available", () => {
   const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
     contributes: { commands: Array<{ command: string; title: string }> };
   };
@@ -26,6 +26,8 @@ test("keeps the legacy management commands available for the Secret Storage key"
     /Test Inference/,
   );
   assert.ok(manifest.contributes.commands.some((item) => item.command === "orvixCopilot.manage"));
+  assert.ok(manifest.contributes.commands.some((item) => item.command === "orvixCopilot.selectEntry"));
+  assert.ok(!manifest.contributes.commands.some((item) => item.command === "orvixCopilot.configureApiKey"));
   assert.match(
     manifest.contributes.commands.find((item) => item.command === "orvixCopilot.openUsage")?.title ?? "",
     /Open Usage/,

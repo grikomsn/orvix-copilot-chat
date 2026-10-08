@@ -167,7 +167,7 @@ export function orderModelMetadata(models: readonly OrvixApiModel[]): OrvixModel
     const metadata = modelMetadataFromApi(raw);
     if (metadata && !discovered.has(metadata.id)) discovered.set(metadata.id, metadata);
   }
-  if (!discovered.size) return [...FALLBACK_MODEL_METADATA];
+  if (!discovered.size) return [];
   return orderModels([...discovered.keys()]).flatMap((id) => {
     const metadata = discovered.get(id);
     return metadata ? [metadata] : [];
