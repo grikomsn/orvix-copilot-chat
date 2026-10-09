@@ -30,6 +30,24 @@ const GPT_56_SOL_TERRA_PROFILE: ThinkingProfile = {
   values: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
   defaultValue: "high",
 };
+const GLM_53_FLASH_PROFILE: ThinkingProfile = {
+  // Live-verified 2026-10-09: unlike ai&, Orvix's glm-5.3-flash accepts
+  // reasoning_effort none (0 reasoning tokens) alongside low/high/max.
+  values: ["none", "low", "high", "max"],
+  defaultValue: "high",
+};
+const DEEPSEEK_V4_1_FLASH_PROFILE: ThinkingProfile = {
+  // Live-verified 2026-10-09: Orvix's deepseek-v4.1-flash accepts low
+  // (ai& rejects it) plus none/high/max.
+  values: ["none", "low", "high", "max"],
+  defaultValue: "high",
+};
+const MIMO_PROFILE: ThinkingProfile = {
+  // Live-verified 2026-10-09: Orvix mimo routes accept none/low/high
+  // (and even tolerate "default", which is deliberately not offered).
+  values: ["none", "low", "high"],
+  defaultValue: "high",
+};
 
 /**
  * Resolves a model's thinking profile. Exact ids win; a `:free` route falls
@@ -52,10 +70,15 @@ const THINKING_PROFILES = new Map<string, ThinkingProfile>([
   ["orvix/muse-spark-1.2", MUSE_PROFILE],
   ["orvix/muse-spark-1.3", MUSE_PROFILE],
   ["orvix/deepseek-v4-pro", DEEPSEEK_V4_PRO_PROFILE],
+  ["orvix/deepseek-v4.1-flash", DEEPSEEK_V4_1_FLASH_PROFILE],
   ["orvix/glm-5.2", GLM_52_PROFILE],
+  ["orvix/glm-5.3-flash", GLM_53_FLASH_PROFILE],
   ["orvix/gpt-5.6-luna", GPT_56_LUNA_PROFILE],
   ["orvix/gpt-5.6-sol", GPT_56_SOL_TERRA_PROFILE],
   ["orvix/gpt-5.6-terra", GPT_56_SOL_TERRA_PROFILE],
+  ["orvix/mimo-v2.5", MIMO_PROFILE],
+  ["orvix/mimo-v2.5-pro", MIMO_PROFILE],
+  ["orvix/mimo-v2.6-pro", MIMO_PROFILE],
 ]);
 
 function undashedId(id: string): string {

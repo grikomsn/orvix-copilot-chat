@@ -22,11 +22,31 @@ test("exposes the upstream Muse reasoning efforts", () => {
 });
 
 test("omits reasoning controls disabled by the managed route", () => {
-  assert.equal(buildThinkingSchema(model("orvix/glm-5.3-flash", false)), undefined);
+  assert.equal(buildThinkingSchema(model("orvix/auto", false)), undefined);
   assert.equal(buildThinkingSchema(model("orvix/deepseek-v4-flash", false)), undefined);
   assert.equal(buildThinkingSchema(model("orvix/minimax-m3", false)), undefined);
   assert.equal(buildThinkingSchema(model("orvix/grok-4.6", false)), undefined);
   assert.equal(buildThinkingSchema(model("orvix/qwen-3.8-flash", false)), undefined);
+});
+
+test("uses live-verified profiles for GLM 5.3 Flash, DeepSeek V4.1 Flash, and MiMo", () => {
+  // Live-verified 2026-10-09: Orvix accepts reasoning_effort none and low on
+  // these routes (diverging from sibling providers' stricter gateways).
+  for (const id of ["orvix/glm-5.3-flash", "orvix/deepseek-v4.1-flash"]) {
+    const schema = buildThinkingSchema(model(id));
+    assert.deepEqual(schema?.properties.reasoningEffort.enum, ["none", "low", "high", "max"], id);
+    assert.equal(schema?.properties.reasoningEffort.default, "high", id);
+  }
+  for (const id of ["orvix/mimo-v2.5", "orvix/mimo-v2.5-pro", "orvix/mimo-v2.6-pro"]) {
+    const schema = buildThinkingSchema(model(id));
+    assert.deepEqual(schema?.properties.reasoningEffort.enum, ["none", "low", "high"], id);
+    assert.equal(schema?.properties.reasoningEffort.default, "high", id);
+  }
+  // :free variants inherit their paid id's profile.
+  assert.deepEqual(
+    buildThinkingSchema(model("orvix/glm-5.3-flash:free"))?.properties.reasoningEffort.enum,
+    ["none", "low", "high", "max"],
+  );
 });
 
 test("uses the documented Luna and DeepSeek effort profiles", () => {
