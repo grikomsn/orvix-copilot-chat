@@ -39,8 +39,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (
         event.affectsConfiguration("orvixCopilot.reasoningEffort") ||
-        event.affectsConfiguration("orvixCopilot.catalogCacheMinutes") ||
-        event.affectsConfiguration("orvixCopilot.managementEntry")
+        event.affectsConfiguration("orvixCopilot.catalogCacheMinutes")
       ) {
         provider.fireDidChange();
       }
@@ -52,7 +51,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.lm.registerTool(
       ORVIX_IMAGE_TOOL_NAME,
       new OrvixImageGenerationTool({
-        resolveApiKey: async () => provider.getFeatureApiKey("imageEntry"),
+        resolveApiKey: async () => provider.getFeatureApiKey(),
         resolveDefaultModel: () =>
           vscode.workspace.getConfiguration("orvixCopilot").get<string>("defaultImageModel") ?? undefined,
         userAgent: extensionUserAgent(context.extension.packageJSON.version, vscode.version),
@@ -61,7 +60,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     ...registerCommands(provider, output, usageStatus),
     registerInlineCompletions(context, {
-      resolveApiKey: async () => provider.getFeatureApiKey("inlineSuggestionsEntry"),
+      resolveApiKey: async () => provider.getFeatureApiKey(),
       output,
       version: context.extension.packageJSON.version as string,
       vscodeVersion: vscode.version,

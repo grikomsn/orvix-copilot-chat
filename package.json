@@ -80,26 +80,6 @@
       {
         "command": "orvixCopilot.diagnostics",
         "title": "Orvix: Show Diagnostics"
-      },
-      {
-        "command": "orvixCopilot.selectEntry",
-        "title": "Orvix: Select Management Entry"
-      },
-      {
-        "command": "orvixCopilot.selectInlineEntry",
-        "title": "Orvix: Select Inline Suggestions Entry"
-      },
-      {
-        "command": "orvixCopilot.selectImageEntry",
-        "title": "Orvix: Select Image Generation Entry"
-      },
-      {
-        "command": "orvixCopilot.forgetEntry",
-        "title": "Orvix: Forget Native Entry"
-      },
-      {
-        "command": "orvixCopilot.restoreEntry",
-        "title": "Orvix: Restore Native Entry"
       }
     ],
     "configuration": {
@@ -234,21 +214,6 @@
             "Google · 61 credits"
           ],
           "description": "Image model used by the orvixImages tool when the caller does not pick one. Configured via Orvix: Set Default Image Model."
-        },
-        "orvixCopilot.managementEntry": {
-          "type": "string",
-          "default": "",
-          "description": "Explicit native entryId used for models, usage, billing session imports, and connection tests. Select an available entry through Orvix: Manage Connection. No automatic fallback."
-        },
-        "orvixCopilot.inlineSuggestionsEntry": {
-          "type": "string",
-          "default": "",
-          "description": "Explicit native entryId used for inline suggestions. Select an available entry through Orvix: Manage Connection. No automatic fallback."
-        },
-        "orvixCopilot.imageEntry": {
-          "type": "string",
-          "default": "",
-          "description": "Explicit native entryId used for image generation. Select an available entry through Orvix: Manage Connection. No automatic fallback."
         }
       }
     },
@@ -259,23 +224,14 @@
         "configuration": {
           "type": "object",
           "required": [
-            "entryId",
             "apiKey"
           ],
           "properties": {
             "apiKey": {
               "type": "string",
               "title": "Orvix API Key",
-              "description": "API key for this Orvix provider entry. VS Code stores configured secrets securely.",
+              "description": "Orvix API key (orv-sk_live_…) for this provider entry. The entry's group name is its user-facing label.",
               "secret": true
-            },
-            "entryId": {
-              "type": "string",
-              "title": "Unique Entry ID",
-              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
-              "minLength": 1,
-              "maxLength": 64,
-              "description": "Unique stable ID for this entry, such as personal or work. Keep it when rotating the key. Native group names are display labels and do not identify credentials."
             }
           }
         }

@@ -9,24 +9,27 @@ class MemorySecrets implements SecretStore {
   async delete(key: string): Promise<void> { this.values.delete(key); }
 }
 
-test("billing sessions require an explicit entry and credential binding", async () => {
+test("billing sessions are bound to one credential reference", async () => {
   const secrets = new MemorySecrets();
   const auth = new OrvixAuth(secrets);
-  secrets.values.set("orvixCopilot.gatewaySession", JSON.stringify({ token: "unbound" }));
-  assert.equal(await auth.getGatewaySession("work", "work:aaa"), undefined);
-  await auth.storeGatewaySession("work", "work:aaa", { token: " synthetic-session ", refreshToken: " synthetic-refresh " });
-  assert.deepEqual(await auth.getGatewaySession("work", "work:aaa"), { token: "synthetic-session", refreshToken: "synthetic-refresh" });
-  assert.equal(await auth.getGatewaySession("personal", "work:aaa"), undefined);
-  assert.equal(await auth.getGatewaySession("work", "work:bbb"), undefined);
-  await auth.clearGatewaySession("work");
-  assert.equal(await auth.getGatewaySession("work", "work:aaa"), undefined);
-  assert.equal(secrets.values.has("orvixCopilot.gatewaySession"), true);
+  secrets.values.set("orvixCopilot.entryGatewaySession.v1.worka", JSON.stringify({ token: "unbound" }));
+  const work = credentialReference("work");
+  const other = credentialReference("other");
+  assert.equal(await auth.getGatewaySession(work), undefined);
+  await auth.storeGatewaySession(work, { token: " synthetic-session ", refreshToken: " synthetic-refresh " });
+  assert.deepEqual(await auth.getGatewaySession(work), { token: "synthetic-session", refreshToken: "synthetic-refresh" });
+  assert.equal(await auth.getGatewaySession(other), undefined);
+  const stored = secrets.values.get(`orvixCopilot.entryGatewaySession.v1.${work}`);
+  assert.match(stored ?? "", /"credentialRef"/);
+  await auth.clearGatewaySession(work);
+  assert.equal(await auth.getGatewaySession(work), undefined);
+  assert.equal(secrets.values.has(`orvixCopilot.entryGatewaySession.v1.${work}`), false);
 });
 
-test("rejects empty billing sessions and invalid aliases without logging credentials", async () => {
+test("rejects empty billing sessions and invalid credential references", async () => {
   const auth = new OrvixAuth(new MemorySecrets());
-  await assert.rejects(() => auth.storeGatewaySession("work", "aaa", { token: " " }), /cannot be empty/);
-  await assert.rejects(() => auth.storeGatewaySession("bad::alias", "aaa", { token: "synthetic" }), /Invalid Orvix/);
+  await assert.rejects(() => auth.storeGatewaySession(credentialReference("work"), { token: " " }), /cannot be empty/);
+  await assert.rejects(() => auth.storeGatewaySession("bad::alias", { token: "synthetic" }), /Invalid Orvix/);
 });
 
 test("credential fingerprints are stable and non-reversible", () => {
@@ -44,10 +47,11 @@ test("a queued removal retires a billing session while its write is pending", as
     await originalStore(key, value);
   };
   const auth = new OrvixAuth(secrets);
-  const writing = auth.storeGatewaySession("work", "work:a", { token: "synthetic" });
-  const removing = auth.clearGatewaySession("work");
+  const work = credentialReference("work");
+  const writing = auth.storeGatewaySession(work, { token: "synthetic" });
+  const removing = auth.clearGatewaySession(work);
   while (!release) await new Promise<void>((resolve) => setImmediate(resolve));
   release();
   await Promise.all([writing, removing]);
-  assert.equal(await auth.getGatewaySession("work", "work:a"), undefined);
+  assert.equal(await auth.getGatewaySession(work), undefined);
 });

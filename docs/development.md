@@ -10,9 +10,9 @@ npm run check
 npm run package
 ```
 
-Press F5 with the repository launch configuration to open an Extension Development Host. Add an Orvix provider entry with a unique `entryId` and a project-scoped key with `ai:invoke`.
+Press F5 with the repository launch configuration to open an Extension Development Host. Add an Orvix provider entry with a project-scoped key with `ai:invoke`.
 
-`test/native/index.js` exports `run()` for a VS Code extension-test host. It uses actual response parts and cancellation with injected synthetic HTTP and keys, checking parallel tools, follow-up history, credential rotation/removal, independent inline/image selections, billing ownership, and stream cleanup. It changes and restores only the three Orvix entry selectors in the isolated host. These tests do not prove live paid inference or billing.
+`test/native/index.js` exports `run()` for a VS Code extension-test host. It uses actual response parts and cancellation with injected synthetic HTTP and keys, checking parallel entries, tools, follow-up history, credential rotation, billing isolation per credential, and stream cleanup. These tests do not prove live paid inference or billing.
 
 ## Architecture
 

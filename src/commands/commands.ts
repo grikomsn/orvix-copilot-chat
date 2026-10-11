@@ -37,11 +37,6 @@ export function registerCommands(
 ): vscode.Disposable[] {
   return [
     vscode.commands.registerCommand("orvixCopilot.manage", () => manage(provider, output, usageStatus)),
-    vscode.commands.registerCommand("orvixCopilot.selectEntry", () => selectEntry(provider, "managementEntry")),
-    vscode.commands.registerCommand("orvixCopilot.selectInlineEntry", () => selectEntry(provider, "inlineSuggestionsEntry")),
-    vscode.commands.registerCommand("orvixCopilot.selectImageEntry", () => selectEntry(provider, "imageEntry")),
-    vscode.commands.registerCommand("orvixCopilot.forgetEntry", () => forgetEntry(provider)),
-    vscode.commands.registerCommand("orvixCopilot.restoreEntry", () => restoreEntry(provider)),
     vscode.commands.registerCommand("orvixCopilot.configureGatewaySession", () => configureGatewaySession(provider, output)),
     vscode.commands.registerCommand("orvixCopilot.removeGatewaySession", () => removeGatewaySession(provider)),
     vscode.commands.registerCommand("orvixCopilot.refreshModels", () => refreshModels(provider)),
@@ -62,30 +57,20 @@ async function manage(
 ): Promise<void> {
   const choices = [
     { label: "$(settings-gear) Manage Language Models", action: "models" },
-    { label: "$(account) Select management entry", action: "entry" },
-    { label: "$(zap) Select inline suggestions entry", action: "inlineEntry" },
-    { label: "$(device-camera) Select image generation entry", action: "imageEntry" },
-    { label: "$(check) Test selected entry inference", action: "test" },
-    { label: "$(refresh) Refresh selected entry models", action: "refresh" },
+    { label: "$(check) Test inference", action: "test" },
+    { label: "$(refresh) Refresh models", action: "refresh" },
     { label: "$(zap) Set inline suggestions model", action: "inlineModel" },
     { label: "$(device-camera) Set default image model", action: "imageModel" },
-    { label: "$(credit-card) Show selected entry usage and credits", action: "usage" },
-    { label: "$(account) Bind billing session to selected entry", action: "session" },
-    { label: "$(trash) Remove selected entry billing session", action: "removeSession" },
-    { label: "$(trash) Forget entry before removing it", action: "forget" },
-    { label: "$(history) Restore forgotten native entry", action: "restore" },
+    { label: "$(credit-card) Show usage and credits", action: "usage" },
+    { label: "$(account) Import billing session", action: "session" },
+    { label: "$(trash) Remove billing session", action: "removeSession" },
     { label: "$(link-external) Open Orvix API keys", action: "open" },
     { label: "$(output) Show Orvix logs", action: "logs" },
     { label: "$(info) Show diagnostics", action: "diagnostics" },
   ];
-  const picked = await vscode.window.showQuickPick(choices, { title: "Orvix — Manage native entries" });
+  const picked = await vscode.window.showQuickPick(choices, { title: "Orvix — Manage" });
   if (!picked) return;
   if (picked.action === "models") await vscode.commands.executeCommand("workbench.action.chat.manageLanguageModels");
-  else if (picked.action === "entry") await selectEntry(provider, "managementEntry");
-  else if (picked.action === "inlineEntry") await selectEntry(provider, "inlineSuggestionsEntry");
-  else if (picked.action === "imageEntry") await selectEntry(provider, "imageEntry");
-  else if (picked.action === "forget") await forgetEntry(provider);
-  else if (picked.action === "restore") await restoreEntry(provider);
   else if (picked.action === "removeSession") await removeGatewaySession(provider);
   else if (picked.action === "refresh") await refreshModels(provider);
   else if (picked.action === "inlineModel") await setInlineSuggestionsModel();
@@ -98,42 +83,13 @@ async function manage(
   else if (picked.action === "diagnostics") await diagnostics(provider, output);
 }
 
-async function selectEntry(provider: OrvixProvider, setting: string): Promise<void> {
-  const picked = await vscode.window.showQuickPick(provider.getEntries().map(({ entryId }) => ({ label: entryId })), {
-    title: "Orvix — Select native entry", placeHolder: "Add entries with unique entryId values in Manage Language Models",
-  });
-  if (!picked) return;
-  await vscode.workspace.getConfiguration(CONFIG_SECTION).update(setting, picked.label, vscode.ConfigurationTarget.Global);
-  provider.fireDidChange();
-}
-
-async function forgetEntry(provider: OrvixProvider): Promise<void> {
-  const ids = new Set([...provider.getEntries().map(({ entryId }) => entryId), ...Object.keys(provider.getObservedEntries())]);
-  const picked = await vscode.window.showQuickPick([...ids].map((label) => ({ label })), {
-    title: "Orvix — Forget entry", placeHolder: "Retire cached credentials and billing before removing the native entry",
-  });
-  if (!picked) return;
-  await provider.forgetEntry(picked.label);
-  await vscode.commands.executeCommand("workbench.action.chat.manageLanguageModels");
-}
-
-async function restoreEntry(provider: OrvixProvider): Promise<void> {
-  const picked = await vscode.window.showQuickPick(provider.getForgottenEntries().map((label) => ({ label })), {
-    title: "Orvix — Restore native entry", placeHolder: "Allow VS Code to provision this ID again; its billing session must be re-imported",
-  });
-  if (!picked) return;
-  await provider.restoreEntry(picked.label);
-  await vscode.commands.executeCommand("workbench.action.chat.manageLanguageModels");
-}
-
 async function configureGatewaySession(provider: OrvixProvider, output: vscode.OutputChannel): Promise<boolean> {
-  const entry = provider.selectedEntry();
   // Extract the session object JSON from the platform page. It looks like
   // {"token":"...","refreshToken":"...","user":{...}}.
   const raw = await vscode.window.showInputBox({
-    title: `Bind Orvix billing session to ${entry.entryId}`,
+    title: "Import Orvix billing session",
     prompt:
-      `Confirm this browser account owns entry ${entry.entryId}. Open platform.orvix.id, run JSON.parse(localStorage['orvix.auth.session']), and paste the \"token\" value (or the whole JSON object).`,
+      "Open platform.orvix.id, run JSON.parse(localStorage['orvix.auth.session']), and paste the \"token\" value (or the whole JSON object).",
     placeHolder: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…",
     password: true,
     ignoreFocusOut: true,
@@ -146,7 +102,7 @@ async function configureGatewaySession(provider: OrvixProvider, output: vscode.O
     return false;
   }
   try {
-    await provider.configureGatewaySession(session, entry);
+    await provider.configureGatewaySession(session);
     output.appendLine("[auth] gateway session imported");
     vscode.window.showInformationMessage("Orvix usage session imported. Refreshing credits and usage…");
     return true;
@@ -312,7 +268,7 @@ async function showUsage(provider: OrvixProvider, output: vscode.OutputChannel, 
     { label: "$(link-external) Open Billing & Credits", description: "platform.orvix.id/billing", action: "openBilling" },
   ];
   const picked = await vscode.window.showQuickPick([...rows, ...actions], {
-    title: `Orvix usage and credits — ${provider.selectedEntry().entryId}`,
+    title: "Orvix usage and credits",
     placeHolder: "Credits, requests, and spend",
   });
   if (!picked?.action) return;
@@ -340,7 +296,6 @@ async function diagnostics(provider: OrvixProvider, output: vscode.OutputChannel
     "",
     `- VS Code: ${vscode.version}`,
     `- API endpoint: ${API_BASE}`,
-    `- Native entries available: ${provider.getEntries().length}`,
     `- Default reasoning effort: ${vscode.workspace.getConfiguration("orvixCopilot").get("reasoningEffort", "high")}`,
     `- Registered models: ${models.length}`,
     "",
