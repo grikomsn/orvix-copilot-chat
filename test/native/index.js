@@ -6,9 +6,6 @@ const { OrvixImageGenerationTool } = require("../../out/images/vscode-tool");
 
 /** Real VS Code parts and cancellation, synthetic HTTP and credentials only. */
 async function run() {
-  const configuration = vscode.workspace.getConfiguration("orvixCopilot");
-  const settings = ["managementEntry", "inlineSuggestionsEntry", "imageEntry"];
-  const original = Object.fromEntries(settings.map((name) => [name, configuration.inspect(name)?.globalValue]));
   const source = new vscode.CancellationTokenSource();
   const values = new Map();
   const state = { get: (key) => values.get(key), update: async (key, value) => { values.set(key, value); } };
@@ -69,20 +66,16 @@ async function run() {
     } }));
   };
   const provider = new OrvixProvider(auth, { appendLine() {} }, "native-test", state, {}, fetcher);
-  const prepare = async (entryId, apiKey) => provider.provideLanguageModelChatInformation({ silent: true,
-    configuration: { entryId, apiKey, name: "Same label" } }, source.token);
+  const prepare = async (apiKey) => provider.provideLanguageModelChatInformation({ silent: true,
+    configuration: { apiKey } }, source.token);
   const options = { requestInitiator: "native-test", tools: [{ name: "read", description: "Synthetic", inputSchema: { type: "object" } }] };
   try {
-    await configuration.update("managementEntry", "native-a", vscode.ConfigurationTarget.Global);
-    await configuration.update("inlineSuggestionsEntry", "native-a", vscode.ConfigurationTarget.Global);
-    await configuration.update("imageEntry", "native-b", vscode.ConfigurationTarget.Global);
-    const aModels = await prepare("native-a", "orv-sk_live_synthetic_a");
-    const bModels = await prepare("native-b", "orv-sk_live_synthetic_b");
+    const aModels = await prepare("orv-sk_live_synthetic_a");
+    const bModels = await prepare("orv-sk_live_synthetic_b");
     const a = aModels.find((model) => model.rawModelId === "orvix/auto");
     const b = bModels.find((model) => model.rawModelId === "synthetic-byok");
-    assert.notEqual(a.id, b.id);
-    assert.equal(provider.getFeatureApiKey("inlineSuggestionsEntry"), "orv-sk_live_synthetic_a");
-    assert.equal(provider.getFeatureApiKey("imageEntry"), "orv-sk_live_synthetic_b");
+    assert.notEqual(a.credentialRef, b.credentialRef);
+    assert.equal(provider.getFeatureApiKey(), "orv-sk_live_synthetic_b", "Active key follows the most recent provisioning");
     const output = [];
     await provider.provideLanguageModelChatResponse(a, [vscode.LanguageModelChatMessage.User("synthetic prompt")], options,
       { report: (part) => output.push(part) }, source.token);
@@ -99,35 +92,40 @@ async function run() {
     assert.equal(sent.at(-1).body.messages.filter((message) => message.role === "tool").length, 3);
     assert.equal(sent.at(-1).body.model, "synthetic-byok");
     assert.equal(sent.at(-1).authorization, "Bearer orv-sk_live_synthetic_b");
-    assert.equal(provider.getUsageSnapshot(a).tracked.requests, 1);
-    assert.equal(provider.getUsageSnapshot(b).tracked.requests, 1);
-    const image = new OrvixImageGenerationTool({ resolveApiKey: async () => provider.getFeatureApiKey("imageEntry"),
+    assert.equal(provider.getUsageSnapshot(a.credentialRef).tracked.requests, 1);
+    assert.equal(provider.getUsageSnapshot(b.credentialRef).tracked.requests, 1);
+    const image = new OrvixImageGenerationTool({ resolveApiKey: async () => provider.getFeatureApiKey(),
       resolveDefaultModel: () => "flux-2-pro", userAgent: "native-test", fetcher });
     await image.invoke({ input: { prompt: "synthetic prompt" } }, source.token);
     assert.equal(sent.at(-1).authorization, "Bearer orv-sk_live_synthetic_b");
-    await provider.configureGatewaySession({ token: "synthetic-session-a" }, a);
-    assert.equal(provider.getUsageSnapshot(a).credits.availableMicrousd, 111);
-    assert.equal(provider.getUsageSnapshot(b).credits, undefined);
-    await provider.refreshUsage(false, b);
-    assert.equal(provider.getUsageSnapshot(b).credits, undefined);
-    await provider.configureGatewaySession({ token: "synthetic-session-b" }, b);
-    assert.equal(provider.getUsageSnapshot(b).credits.availableMicrousd, 222);
-    assert.equal(provider.getUsageSnapshot(a).credits.availableMicrousd, 111);
+    // Billing sessions are bound to one credential: the active one at import time.
+    await provider.configureGatewaySession({ token: "synthetic-session-a" });
+    assert.equal(provider.getUsageSnapshot(b.credentialRef).credits.availableMicrousd, 111);
+    assert.equal(provider.getUsageSnapshot(a.credentialRef).credits, undefined);
+    await provider.refreshUsage(false, a.credentialRef);
+    assert.equal(provider.getUsageSnapshot(a.credentialRef).credits, undefined);
+    await prepare("orv-sk_live_synthetic_a");
+    await provider.configureGatewaySession({ token: "synthetic-session-b" });
+    assert.equal(provider.getUsageSnapshot(a.credentialRef).credits.availableMicrousd, 222);
+    assert.equal(provider.getUsageSnapshot(b.credentialRef).credits.availableMicrousd, 111);
     const persisted = values.get("orvixCopilot.entryUsage.v1");
     assert.equal(Object.values(persisted).some((snapshot) => snapshot.credits || snapshot.account), false);
     let releaseBilling;
     pendingBilling = () => new Promise((resolve) => { releaseBilling = resolve; });
-    const oldRefresh = provider.refreshUsage(false, a);
+    const oldRefresh = provider.refreshUsage(false, a.credentialRef);
     while (!releaseBilling) await new Promise((resolve) => setImmediate(resolve));
-    const rotated = (await prepare("native-a", "orv-sk_live_synthetic_rotated"))[0];
+    const rotated = (await prepare("orv-sk_live_synthetic_rotated"))[0];
     releaseBilling(Response.json({ data: { availableMicrousd: 999 } }));
     await oldRefresh;
-    assert.equal(provider.getUsageSnapshot(rotated).credits, undefined);
-    assert.equal(await auth.getGatewaySession(a.entryId, a.credentialRef), undefined);
-    await assert.rejects(provider.provideLanguageModelChatResponse(a, [], options, { report() {} }, source.token), /changed or was forgotten/);
-    const returned = (await prepare("native-a", "orv-sk_live_synthetic_a"))[0];
+    assert.equal(provider.getUsageSnapshot(rotated.credentialRef).credits, undefined);
+    // A gateway session stays bound to its own credential across rotations.
+    assert.equal((await auth.getGatewaySession(a.credentialRef))?.token, "synthetic-session-b");
+    const stale = (await prepare("orv-sk_live_synthetic_rotated"))[0];
+    assert.equal(await provider.refreshUsage(false, stale.credentialRef).then(() => true, () => false), true);
+    // Key-scoped credentials keep handles valid while their key stays provisioned.
+    const returned = (await prepare("orv-sk_live_synthetic_a"))[0];
     assert.equal(returned.id, a.id);
-    await assert.rejects(provider.provideLanguageModelChatResponse(a, [], options, { report() {} }, source.token), /changed or was forgotten/);
+    assert.equal(returned.credentialRef, a.credentialRef);
     for (const mode of ["incomplete", "error"]) {
       streamMode = mode;
       const parts = [];
@@ -141,28 +139,12 @@ async function run() {
     await provider.provideLanguageModelChatResponse(returned, [], options, { report() { cancellation.cancel(); } }, cancellation.token);
     assert.equal(signals.at(-1).aborted, true);
     cancellation.dispose();
-    await provider.forgetEntry("native-a");
-    assert.throws(() => provider.getFeatureApiKey("inlineSuggestionsEntry"), /Select an available/);
-    assert.equal(provider.getFeatureApiKey("imageEntry"), "orv-sk_live_synthetic_b");
-    assert.deepEqual(await prepare("native-a", "orv-sk_live_synthetic_a"), []);
-    assert.equal(Object.keys(provider.getObservedEntries()).length, 1);
-    assert.deepEqual(Object.keys(provider.getObservedEntries()["native-b"]).sort(), ["modelCount", "updatedAt"]);
-    const restarted = new OrvixProvider(auth, { appendLine() {} }, "native-test", state, {}, fetcher);
-    assert.equal(restarted.getEntries().length, 0);
-    assert.deepEqual(await restarted.provideLanguageModelChatInformation({ configuration: { entryId: "native-a", apiKey: "orv-sk_live_synthetic_a" } }, source.token), []);
-    await restarted.restoreEntry("native-a");
-    const restored = await restarted.provideLanguageModelChatInformation({ configuration: { entryId: "native-a", apiKey: "orv-sk_live_synthetic_a" } }, source.token);
-    assert.ok(restored.length);
-    assert.equal(await auth.getGatewaySession(a.entryId, a.credentialRef), undefined);
     directoryEmpty = true;
-    assert.deepEqual(await prepare("native-empty", "orv-sk_live_synthetic_empty"), []);
-    assert.equal(provider.getObservedEntries()["native-empty"].modelCount, 0);
-    await provider.forgetEntry("native-empty");
+    assert.deepEqual(await prepare("orv-sk_live_synthetic_empty"), []);
   } finally {
     source.dispose();
-    for (const name of settings) await configuration.update(name, original[name], vscode.ConfigurationTarget.Global);
   }
   console.log(JSON.stringify({ provider: "orvix", passed: true,
-    nativeChecks: "parallel aliases, reasoning closure, raw routing, tool follow-up, inference usage, explicit inline/image selection, billing ownership, stale refresh, rotation/removal, incomplete/error/cancellation cleanup" }));
+    nativeChecks: "parallel entries, reasoning closure, raw routing, tool follow-up, inference usage, billing by credential, stale refresh, rotation, incomplete/error/cancellation cleanup" }));
 }
 module.exports = { run };

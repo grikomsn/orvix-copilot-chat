@@ -13,7 +13,7 @@ test("declares native API-key configuration without a management-command overrid
     required?: string[];
     properties?: Record<string, { secret?: boolean }>;
   };
-  assert.deepEqual(configuration.required, ["entryId", "apiKey"]);
+  assert.deepEqual(configuration.required, ["apiKey"]);
   assert.equal(configuration.properties?.apiKey.secret, true);
 });
 
@@ -26,7 +26,9 @@ test("keeps entry management and billing commands available", () => {
     /Test Inference/,
   );
   assert.ok(manifest.contributes.commands.some((item) => item.command === "orvixCopilot.manage"));
-  assert.ok(manifest.contributes.commands.some((item) => item.command === "orvixCopilot.selectEntry"));
+  assert.ok(manifest.contributes.commands.some((item) => item.command === "orvixCopilot.configureGatewaySession"));
+  assert.ok(!manifest.contributes.commands.some((item) => item.command === "orvixCopilot.selectEntry"));
+  assert.ok(!manifest.contributes.commands.some((item) => item.command === "orvixCopilot.forgetEntry"));
   assert.ok(!manifest.contributes.commands.some((item) => item.command === "orvixCopilot.configureApiKey"));
   assert.match(
     manifest.contributes.commands.find((item) => item.command === "orvixCopilot.openUsage")?.title ?? "",

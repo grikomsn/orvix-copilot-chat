@@ -2,11 +2,9 @@
 
 Orvix API keys are owned by VS Code's native secret provider configuration. The extension keeps provisioned keys only in memory and never reads command-managed keys or unbound legacy billing sessions. Keys are not copied into settings, files, extension logs, or this repository.
 
-Each entry requires a unique explicit `entryId`. Selection IDs are stable while catalog and inference usage scopes include a one-way credential fingerprint. A distinct in-memory generation retires stale handles on rotation, rotating back, or forgetting an entry. Native group labels are never used as credential identities.
+Each entry is identified by its VS Code group name, which is only a display label. Catalog, usage, and billing scopes use a one-way fingerprint of the entry's key, so identical keys share state and distinct keys stay isolated. Model IDs are the raw hosted IDs because the host namespaces them per group.
 
-Browser billing sessions remain in `SecretStorage`. The user explicitly binds each session to the selected entry and its current credential; no label or fingerprint proves account ownership. Rotation and forgetting remove that binding. Late billing responses cannot overwrite a replaced entry or a newer session binding. Account balances, project metadata, and billing transactions are not persisted in the observation journal or activity cache. The journal contains only entry IDs, model counts, and timestamps.
-
-VS Code does not expose native entry removal to the provider. Use **Orvix: Forget Native Entry** before deleting the entry in Manage Language Models. This retires cached keys, model handles, activity, and billing sessions; it does not revoke the remote API key.
+Browser billing sessions remain in `SecretStorage`, bound to one credential fingerprint. The user imports the session for the active credential; no label or fingerprint proves account ownership. Re-provisioning keys does not move the binding; re-import to rebind. Late billing responses cannot overwrite a newer session binding. Account balances, project metadata, and billing transactions are not persisted; only inference activity totals are stored, keyed by credential fingerprint.
 
 Use a dedicated project key with only the `ai:invoke` scope. Orvix keys can carry a per-key rate limit and monthly spend limit; set those controls in the Orvix Platform and rotate or revoke the key there when it is no longer needed.
 
@@ -22,12 +20,10 @@ The live Orvix catalog remains authoritative. Prompt and tool content is sent on
 
 ## Inline completions
 
-When `orvixCopilot.inlineSuggestions` is enabled, each suggestion sends a bounded window of the current document (a fixed number of lines before the cursor and a bounded suffix after it) using the explicitly selected inline entry's API key to the same `/chat/completions` endpoint. Upstream error bodies are never surfaced or logged because they can echo prompt context, and suggestion text flows only into the editor's ghost text. The feature is disabled by default.
+When `orvixCopilot.inlineSuggestions` is enabled, each suggestion sends a bounded window of the current document (a fixed number of lines before the cursor and a bounded suffix after it) using the most recently provisioned key to the same `/chat/completions` endpoint. Upstream error bodies are never surfaced or logged because they can echo prompt context, and suggestion text flows only into the editor's ghost text. The feature is disabled by default.
 
 ## Logging
 
 Debug logs contain model IDs, request state, retries, usage counters, and error summaries. They exclude API keys, authorization headers, prompts, tool arguments, and response text. Credential references are short one-way hashes used only to isolate in-memory and persisted model catalogs.
 
-Image generation uses only the explicitly selected `imageEntry`; it never silently borrows the active chat or management key. Missing selections fail closed.
-
-Forgotten entry IDs remain blocked across restarts, so native model discovery cannot automatically revive them. Use **Orvix: Restore Native Entry** to intentionally provision that ID again, then re-import its billing session. This stores only the forgotten IDs, never keys or account information.
+Image generation uses the active entry's API key (the most recently provisioned one); it never sends a prompt without a provisioned key and fails closed otherwise.

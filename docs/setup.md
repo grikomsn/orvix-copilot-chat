@@ -10,13 +10,12 @@
 
 1. Create a key in the [Orvix Platform](https://platform.orvix.id/api-keys).
 2. In Copilot Chat, open the model picker and choose **Manage Models**.
-3. Add an **Orvix** provider entry with a unique lowercase **Entry ID** (for example `personal` or `work`) and the complete `orv-sk_live_…` key.
+3. Add an **Orvix** provider entry and paste the complete `orv-sk_live_…` key. The entry's **group name** is its label (for example `personal` or `work`); use a different group per key.
 4. Select a model returned for the key's project.
-5. Run **Orvix: Manage Connection** and choose entries for management, inline suggestions, and image generation. Each selection is explicit; none falls back to another account.
 
-Native group names are display labels. The required `entryId` is the stable identity, so use a different ID for each entry and preserve it during key rotation. A model selection is `entryId::rawModelId`; requests still send the original managed `orvix/*` or unprefixed BYOK ID. Rotation invalidates existing model handles; reselect a model before continuing an old chat. Run **Orvix: Forget Native Entry** before deleting a native entry to retire its cached credentials and billing binding. VS Code does not expose an entry-removal event to this provider.
+Each entry is scoped by a one-way fingerprint of its key. A model selection belongs to the group that listed it; requests always send the original managed `orvix/*` or unprefixed BYOK ID. Rotating an entry's key keeps its group label, and its catalog refreshes from the new key. Deleting an entry in Manage Language Models removes its model handles; its cached catalog and activity age out on their own.
 
-Command-managed keys and unbound billing sessions are no longer read. Add native entries and re-import billing sessions for their owners.
+Command-managed keys and unbound billing sessions are no longer read. Add native entries and re-import billing sessions.
 
 Provider-entry discovery uses `https://api.orvix.id/v1/models`. The live response is authoritative: additions and removals appear automatically after the catalog cache expires or **Orvix: Refresh Models** runs. A persisted catalog is used only when live discovery is unavailable.
 
@@ -41,11 +40,7 @@ Pricing is surfaced in the model picker (`In: $… · Out: $… /1M tokens`), th
 | Command | Purpose |
 | --- | --- |
 | **Orvix: Manage Connection** | Open the connection workflow |
-| **Orvix: Select Management Entry** | Choose the entry for model refreshes, tests, usage, and billing imports |
-| **Orvix: Select Inline Suggestions Entry** | Choose the entry for document suggestions |
-| **Orvix: Select Image Generation Entry** | Choose the entry paying for image requests |
-| **Orvix: Forget Native Entry** | Retire its cached handles and billing binding before deleting it |
-| **Orvix: Import Usage Session** | Explicitly bind a browser billing session to the selected entry |
+| **Orvix: Import Usage Session** | Bind a browser billing session to the active credential |
 | **Orvix: Remove Usage Session** | Remove the imported gateway session |
 | **Orvix: Refresh Models** | Refresh the live project model catalog |
 | **Orvix: Test Inference** | Send a small non-streaming verification request |
@@ -59,9 +54,6 @@ Pricing is surfaced in the model picker (`In: $… · Out: $… /1M tokens`), th
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `orvixCopilot.managementEntry` | empty | Explicit entry ID for tests, models, usage, and billing imports |
-| `orvixCopilot.inlineSuggestionsEntry` | empty | Explicit entry ID for inline suggestions |
-| `orvixCopilot.imageEntry` | empty | Explicit entry ID for image generation |
 | `orvixCopilot.reasoningEffort` | `high` | Default reasoning effort for models that support it |
 | `orvixCopilot.maxOutputTokens` | `0` | Use the model maximum, or cap output explicitly |
 | `orvixCopilot.requestTimeoutSeconds` | `600` | Total inference timeout |
@@ -106,10 +98,9 @@ status bar:
 
 1. Sign in at <https://platform.orvix.id> and open your browser DevTools console.
 2. Run `JSON.parse(localStorage['orvix.auth.session'])` and copy the `token` value.
-3. Choose its owning entry with **Orvix: Select Management Entry**.
-4. Run **Orvix: Import Usage Session**, confirm that the browser account owns this entry, and paste it. The extension cannot infer account ownership from an entry label or API-key fingerprint.
+3. Run **Orvix: Import Usage Session** and paste it. The token binds to the credential you last provisioned in Manage Language Models (the active one).
 
-The token is stored in VS Code Secret Storage with an explicit entry and credential binding. Replacing or forgetting that entry clears the binding. Billing balances stay in memory; only inference activity totals persist. It expires after about an hour,
+The token is stored in VS Code Secret Storage with an explicit credential binding. Re-provisioning keys does not move the binding; re-import to rebind. Billing balances stay in memory; only inference activity totals persist. It expires after about an hour,
 so re-import when prompted. Without it, the extension still shows locally
 tracked request/token totals for the current session from the inference stream.
 
@@ -125,8 +116,8 @@ Ember tokens, wallet IDR, or Coding plan units. The extension exposes it as a
 Copilot Chat **language-model tool** named `orvixImages` (contributed as
 `orvix-copilot-chat_generateImage`).
 
-First choose the paying entry with **Orvix: Select Image Generation Entry**. Then enable or reference `orvixImages` in agent mode (the same way you'd
-use a web-search tool). The tool takes a non-empty `prompt` and an optional
+Enable or reference `orvixImages` in agent mode (the same way you'd
+use a web-search tool); it uses the active entry's API key. The tool takes a non-empty `prompt` and an optional
 `model` (an Orvix image model slug, with or without the `orvix/` prefix), plus
 optional `n`, `size`, `quality`, and `response_format`. When `model` is
 omitted — or names an unknown model — the **default image model** is used
@@ -206,5 +197,3 @@ context metadata remains authoritative even when output capability equals it.
 
 Context Window uses the dedicated tokens group so it remains visible beside
 reasoning controls. VS Code renders only one enum property per group.
-
-Forgotten entry IDs remain blocked across restarts, so native model discovery cannot automatically revive them. Use **Orvix: Restore Native Entry** to intentionally provision that ID again, then re-import its billing session. This stores only the forgotten IDs, never keys or account information.

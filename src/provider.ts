@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { randomUUID } from "node:crypto";
-import { OrvixAuth, type GatewaySession } from "./auth/auth";
+import { OrvixAuth, credentialReference, type GatewaySession } from "./auth/auth";
 import { messageOf } from "./errors";
 import {
   advertisedModelLimits,
@@ -29,13 +29,11 @@ import { ChatCompletionStreamParser, validateStreamCompletion } from "./transpor
 import { ORVIX_ENDPOINTS, ORVIX_GATEWAY_ENDPOINTS, orvixHeaders } from "./transport/protocol";
 import { apiError } from "./transport/errors";
 import { modelFamily } from "./models/family";
-import { NativeEntries, entryIdFromConfiguration, qualifiedModelId, type NativeEntry } from "./provider-profile";
+import { apiKeyFromConfiguration, Credentials } from "./provider-profile";
 import { isTransientNetworkError, isTransientServerError, retryDelayMs } from "./provider/retry";
 import { messageToText } from "./provider/messages";
 import { buildRequest } from "./provider/request";
-import { trimHistoryToFit } from "./provider/history-trim";
 import { StreamResponseReporter } from "./provider/response";
-import { observeEntry, observedEntries } from "./provider-journal";
 import {
   mergeUsageSnapshot,
   parseBillingPayload,
@@ -50,8 +48,9 @@ import {
 
 export { API_BASE } from "./transport/protocol";
 
-export interface OrvixModel extends vscode.LanguageModelChatInformation, NativeEntry {
+export interface OrvixModel extends vscode.LanguageModelChatInformation {
   rawModelId: string;
+  credentialRef: string;
   reasoningEffort: boolean;
 }
 
@@ -63,7 +62,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
   readonly onDidChangeUsage = this.usageEmitter.event;
   private readonly catalogs = new Map<string, OrvixModelMetadata[]>();
   private readonly refreshedAt = new Map<string, number>();
-  private readonly entries: NativeEntries;
+  private readonly credentials = new Credentials();
   private readonly billingRevisions = new Map<string, number>();
   private readonly usageByCredential = new Map<string, OrvixUsageSnapshot>();
   private readonly metadata: ModelsDevMetadata;
@@ -85,8 +84,6 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     initialUsage: Readonly<Record<string, OrvixUsageSnapshot>> = {},
     private readonly fetcher: typeof fetch = fetch,
   ) {
-    const forgotten = state?.get<unknown>("orvixCopilot.forgottenEntries.v1");
-    this.entries = new NativeEntries(Array.isArray(forgotten) ? forgotten.filter((id): id is string => typeof id === "string") : []);
     // Only inference activity is persisted; billing ownership is freshly bound.
     for (const [ref, usage] of Object.entries(initialUsage)) this.usageByCredential.set(ref, usage);
     this.metadata = new ModelsDevMetadata(state ?? new MemoryMetadataCache(), this.fetcher);
@@ -100,56 +97,37 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
   }
 
   /** Returns the current usage snapshot without side effects. @see {@link refreshUsage} */
-  getUsageSnapshot(entry = this.selectedEntry()): OrvixUsageSnapshot {
-    return this.usageByCredential.get(entry.credentialRef) ?? {};
+  getUsageSnapshot(credentialRef = this.activeCredentialRef() ?? ""): OrvixUsageSnapshot {
+    return this.usageByCredential.get(credentialRef) ?? {};
   }
 
   getSelectedUsageSnapshot(): OrvixUsageSnapshot {
-    try { return this.getUsageSnapshot(); } catch { return {}; }
+    return this.getUsageSnapshot();
   }
 
-  getEntries(): NativeEntry[] { return this.entries.list(); }
-  getForgottenEntries(): string[] { return this.entries.forgottenIds(); }
-
-  async restoreEntry(entryId: string): Promise<void> {
-    this.entries.restore(entryId);
-    await this.persistOwnedState();
-    this.changeEmitter.fire();
+  getFeatureApiKey(): string | undefined {
+    return this.credentials.activeApiKey();
   }
 
-  getObservedEntries(): ReturnType<typeof observedEntries> {
-    return this.state ? observedEntries(this.state) : {};
-  }
-
-  selectedEntry(): NativeEntry {
-    return this.entries.get(this.configuration.get("managementEntry", ""));
-  }
-
-  getFeatureApiKey(setting: "inlineSuggestionsEntry" | "imageEntry"): string | undefined {
-    const entryId = this.configuration.get<string>(setting, "");
-    if (!entryId) return undefined;
-    return this.entries.key(this.entries.get(entryId));
-  }
-
-  async forgetEntry(entryId: string): Promise<void> {
-    const entry = this.entries.list().find((item) => item.entryId === entryId);
-    this.entries.forget(entryId);
-    this.billingRevisions.set(entryId, (this.billingRevisions.get(entryId) ?? 0) + 1);
-    await this.auth.clearGatewaySession(entryId);
-    if (entry) {
-      this.usageByCredential.delete(entry.credentialRef);
-      this.catalogs.delete(entry.credentialRef);
-      this.refreshedAt.delete(entry.credentialRef);
+  /** Prunes catalogs whose key is no longer provisioned by any native entry. */
+  private pruneCatalogs(): void {
+    for (const reference of this.catalogs.keys()) {
+      if (this.credentials.keyForCredential(reference)) continue;
+      this.catalogs.delete(reference);
+      this.refreshedAt.delete(reference);
     }
-    await this.persistOwnedState();
-    if (this.state) await observeEntry(this.state, entryId, undefined);
-    this.changeEmitter.fire();
-    this.usageEmitter.fire({});
+  }
+
+  private activeCredentialRef(): string | undefined {
+    const apiKey = this.getFeatureApiKey();
+    return apiKey ? credentialReference(apiKey) : undefined;
   }
 
   /** Resets locally tracked usage (credits and summary are re-fetched on next refresh). */
   clearUsage(): void {
-    this.setAndEmitUsage({}, this.selectedEntry());
+    const credentialRef = this.activeCredentialRef();
+    if (!credentialRef) return;
+    this.setAndEmitUsage({}, credentialRef);
   }
 
   /**
@@ -170,18 +148,18 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
    *
    * @see {@link getUsageSnapshot}, {@link onDidChangeUsage}, {@link hasGatewaySession}
    */
-  async refreshUsage(promptForSession = false, entry = this.selectedEntry()): Promise<OrvixUsageSnapshot> {
-    const revision = this.billingRevisions.get(entry.entryId) ?? 0;
+  async refreshUsage(promptForSession = false, credentialRef = this.activeCredentialRef() ?? ""): Promise<OrvixUsageSnapshot> {
+    const revision = this.billingRevisions.get(credentialRef) ?? 0;
     const merge = (update: OrvixUsageSnapshot): void => {
-      if ((this.billingRevisions.get(entry.entryId) ?? 0) === revision) this.mergeAndEmitUsage(update, entry);
+      if ((this.billingRevisions.get(credentialRef) ?? 0) === revision) this.mergeAndEmitUsage(update, credentialRef);
     };
-    const session = await this.requireGatewaySession(entry, promptForSession);
+    const session = await this.requireGatewaySession(credentialRef, promptForSession);
     if (!session) {
       // No gateway session: the API key is inferencing-only, so fall back to
       // local session tracking and explain the limitation.
       const message = "Orvix usage requires a browser sign-in (the API key is inferencing-only)";
       merge({ apiError: message, updatedAt: Date.now() });
-      return this.entries.matches(entry) ? this.getUsageSnapshot(entry) : {};
+      return this.credentials.has(credentialRef) ? this.getUsageSnapshot(credentialRef) : {};
     }
 
     try {
@@ -269,35 +247,38 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       merge({ apiError: message, updatedAt: Date.now() });
     }
 
-    return this.entries.matches(entry) ? this.getUsageSnapshot(entry) : {};
+    return this.credentials.has(credentialRef) ? this.getUsageSnapshot(credentialRef) : {};
   }
 
   /** Returns whether a gateway (usage/billing) session has been imported. */
   async hasGatewaySession(): Promise<boolean> {
-    const entry = this.selectedEntry();
-    return Boolean(await this.auth.getGatewaySession(entry.entryId, entry.credentialRef));
+    const credentialRef = this.activeCredentialRef();
+    if (!credentialRef) return false;
+    return Boolean(await this.auth.getGatewaySession(credentialRef));
   }
 
   /** Stores a browser gateway session (imported by the user) for usage access. */
-  async configureGatewaySession(session: GatewaySession, entry = this.selectedEntry()): Promise<void> {
-    this.entries.key(entry);
-    const revision = (this.billingRevisions.get(entry.entryId) ?? 0) + 1;
-    this.billingRevisions.set(entry.entryId, revision);
+  async configureGatewaySession(session: GatewaySession): Promise<void> {
+    const credentialRef = this.activeCredentialRef();
+    if (!credentialRef) throw new Error("Provision an Orvix entry in Manage Language Models first.");
+    const revision = (this.billingRevisions.get(credentialRef) ?? 0) + 1;
+    this.billingRevisions.set(credentialRef, revision);
     await this.testGatewaySession(session);
-    if (!this.entries.matches(entry) || this.billingRevisions.get(entry.entryId) !== revision)
-      throw new Error("Orvix entry or billing binding changed during session validation");
-    await this.auth.storeGatewaySession(entry.entryId, entry.credentialRef, session);
-    const previous = this.getUsageSnapshot(entry);
-    this.setAndEmitUsage({ tracked: previous.tracked, lastRequest: previous.lastRequest }, entry);
-    await this.refreshUsage(false, entry);
+    if (!this.credentials.has(credentialRef) || this.billingRevisions.get(credentialRef) !== revision)
+      throw new Error("Orvix credential or billing binding changed during session validation");
+    await this.auth.storeGatewaySession(credentialRef, session);
+    const previous = this.getUsageSnapshot(credentialRef);
+    this.setAndEmitUsage({ tracked: previous.tracked, lastRequest: previous.lastRequest }, credentialRef);
+    await this.refreshUsage(false, credentialRef);
   }
 
   async clearGatewaySession(): Promise<void> {
-    const entry = this.selectedEntry();
-    this.billingRevisions.set(entry.entryId, (this.billingRevisions.get(entry.entryId) ?? 0) + 1);
-    await this.auth.clearGatewaySession(entry.entryId);
-    const previous = this.getUsageSnapshot(entry);
-    this.setAndEmitUsage({ tracked: previous.tracked, lastRequest: previous.lastRequest }, entry);
+    const credentialRef = this.activeCredentialRef();
+    if (!credentialRef) return;
+    this.billingRevisions.set(credentialRef, (this.billingRevisions.get(credentialRef) ?? 0) + 1);
+    await this.auth.clearGatewaySession(credentialRef);
+    const previous = this.getUsageSnapshot(credentialRef);
+    this.setAndEmitUsage({ tracked: previous.tracked, lastRequest: previous.lastRequest }, credentialRef);
   }
 
   /** Probes the gateway with a session token to confirm it is valid before storing. */
@@ -309,8 +290,9 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
   }
 
   async refreshModels(): Promise<string[]> {
-    const entry = this.selectedEntry();
-    const models = await this.refreshCatalog(entry, this.entries.key(entry));
+    const apiKey = this.getFeatureApiKey();
+    if (!apiKey) throw new Error("Provision an Orvix entry in Manage Language Models first.");
+    const models = await this.refreshCatalog(credentialReference(apiKey), apiKey);
     this.changeEmitter.fire();
     return models.map(({ id }) => id);
   }
@@ -320,24 +302,22 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     token: vscode.CancellationToken,
   ): Promise<OrvixModel[]> {
     if (token.isCancellationRequested || !options.configuration) return [];
-    if (this.entries.isForgotten(entryIdFromConfiguration(options.configuration))) return [];
-    const previous = this.entries.list().find((item) => item.entryId === options.configuration?.entryId);
-    const entry = this.entries.register(options.configuration);
-    const { entryId, credentialRef, generation } = entry;
-    const apiKey = this.entries.key(entry);
-    if (previous && previous.generation !== generation) {
-      await this.auth.clearGatewaySession(entryId);
-      this.billingRevisions.set(entryId, (this.billingRevisions.get(entryId) ?? 0) + 1);
-      this.usageByCredential.delete(previous.credentialRef);
-      this.catalogs.delete(previous.credentialRef);
-      this.refreshedAt.delete(previous.credentialRef);
-      await this.persistOwnedState();
-      this.usageEmitter.fire(this.getSelectedUsageSnapshot());
+    let apiKey: string | undefined;
+    try {
+      apiKey = apiKeyFromConfiguration(options.configuration);
+      if (!apiKey) throw new Error("Set a valid Orvix API key in Manage Language Models");
+    } catch (error) {
+      const message = messageOf(error);
+      this.output.appendLine(`[models] ${message}`);
+      if (!options.silent) void vscode.window.showErrorMessage(message);
+      return [];
     }
+    const credentialRef = this.credentials.register(apiKey);
+    this.pruneCatalogs();
     const maxAge = Math.max(1, this.configuration.get("catalogCacheMinutes", 5)) * 60_000;
     if (apiKey && Date.now() - (this.refreshedAt.get(credentialRef) ?? 0) > maxAge) {
       try {
-        await this.refreshCatalog(entry, apiKey, token);
+        await this.refreshCatalog(credentialRef, apiKey, token);
       } catch (error) {
         if (!token.isCancellationRequested) {
           this.output.appendLine(`[models] discovery failed; using cached/fallback list: ${messageOf(error)}`);
@@ -345,23 +325,20 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       }
     }
 
-    if (token.isCancellationRequested || !this.entries.matches(entry)) return [];
-    if (this.state) await observeEntry(this.state, entryId, this.catalogFor(credentialRef).length);
+    if (token.isCancellationRequested || !this.credentials.has(credentialRef)) return [];
     this.usageEmitter.fire(this.getSelectedUsageSnapshot());
     return this.catalogFor(credentialRef).map((metadata) => {
       const pricing = modelPricingFields(metadata.cost);
       const limits = advertisedModelLimits(metadata, this.configuration.get("maxOutputTokens", 0));
       return {
-        id: qualifiedModelId(entryId, metadata.id),
+        id: metadata.id,
         rawModelId: metadata.id,
         credentialRef,
-        entryId,
-        generation,
         reasoningEffort: metadata.reasoningEffort,
         name: metadata.name || formatModelName(metadata.id),
         family: modelFamily(metadata.id),
         version: metadata.version,
-        detail: `Orvix · ${entryId}`,
+        detail: "Orvix",
         tooltip: `${metadata.id} via Orvix · ${formatTokenLimit(metadata.contextLength)} context · ${formatTokenLimit(
           metadata.maxOutputTokens,
         )} max output${metadata.imageInput ? " · image input" : " · text input"}${
@@ -390,7 +367,10 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     token: vscode.CancellationToken,
   ): Promise<void> {
     if (token.isCancellationRequested) return;
-    const apiKey = this.entries.key(model);
+    const apiKey = this.credentials.keyForCredential(model.credentialRef);
+    if (!apiKey) {
+      throw new Error("This entry's API key was replaced or removed. Reselect its model in Manage Language Models.");
+    }
     const reasoningEffort = resolveEffortValue(
       model,
       options.modelConfiguration,
@@ -408,7 +388,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       resolveContextCap(resolveContextSize(options.modelConfiguration), model.maxInputTokens),
     );
     const reporter = new StreamResponseReporter(progress, vscode, randomUUID(),
-      (usage) => this.captureRequestUsage(usage, model.rawModelId, model));
+      (usage) => this.captureRequestUsage(usage, model.rawModelId, model.credentialRef));
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     const controller = new AbortController();
     const cancellation = token.onCancellationRequested(() => controller.abort());
@@ -499,9 +479,9 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     reasoningEffort?: ReasoningEffort;
     text: string;
   }> {
-    const entry = this.selectedEntry();
-    const { credentialRef } = entry;
-    const apiKey = this.entries.key(entry);
+    const apiKey = this.getFeatureApiKey();
+    if (!apiKey) throw new Error("Provision an Orvix entry in Manage Language Models first.");
+    const credentialRef = credentialReference(apiKey);
     const models = this.catalogFor(credentialRef);
     const model = models[0]?.id ?? FALLBACK_MODELS[0];
     const modelMetadata = models[0];
@@ -531,7 +511,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       choices?: Array<{ message?: { content?: string } }>;
       usage?: Record<string, unknown>;
     };
-    if (responseBody.usage) this.captureRequestUsage(responseBody.usage, model, entry);
+    if (responseBody.usage) this.captureRequestUsage(responseBody.usage, model, credentialRef);
     return {
       model,
       ...(reasoningEffort ? { reasoningEffort } : {}),
@@ -572,16 +552,16 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
   }
 
   private async refreshCatalog(
-    entry: NativeEntry,
+    credentialRef: string,
     apiKey: string,
     token?: vscode.CancellationToken,
   ): Promise<OrvixModelMetadata[]> {
-    if (token?.isCancellationRequested) return this.catalogFor(entry.credentialRef);
+    if (token?.isCancellationRequested) return this.catalogFor(credentialRef);
     const controller = new AbortController();
     const cancellation = token?.onCancellationRequested(() => controller.abort());
     try {
       const models = await this.fetchModels(apiKey, controller.signal);
-      if (!token?.isCancellationRequested && this.entries.matches(entry)) this.setCatalog(entry.credentialRef, models);
+      if (!token?.isCancellationRequested && this.credentials.has(credentialRef)) this.setCatalog(credentialRef, models);
       return models;
     } finally { cancellation?.dispose(); }
   }
@@ -600,13 +580,13 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
   }
 
   /** Loads the gateway session if present, optionally prompting to import one. */
-  private async requireGatewaySession(entry: NativeEntry, prompt: boolean): Promise<GatewaySession | undefined> {
-    let session = await this.auth.getGatewaySession(entry.entryId, entry.credentialRef);
+  private async requireGatewaySession(credentialRef: string, prompt: boolean): Promise<GatewaySession | undefined> {
+    let session = await this.auth.getGatewaySession(credentialRef);
     if (!session && prompt) {
       await vscode.commands.executeCommand("orvixCopilot.configureGatewaySession");
-      session = await this.auth.getGatewaySession(entry.entryId, entry.credentialRef);
+      session = await this.auth.getGatewaySession(credentialRef);
     }
-    return this.entries.matches(entry) ? session : undefined;
+    return this.credentials.has(credentialRef) ? session : undefined;
   }
 
   private async fetchInference(init: RequestInit): Promise<Response> {
@@ -632,29 +612,28 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
    *
    * @see {@link recordApiRequestUsage}, {@link setAndEmitUsage}
    */
-  private captureRequestUsage(raw: Record<string, unknown>, modelId: string, entry: NativeEntry): void {
-    if (!this.entries.matches(entry)) return;
-    const next = recordApiRequestUsage(this.getUsageSnapshot(entry), raw, modelId);
+  private captureRequestUsage(raw: Record<string, unknown>, modelId: string, credentialRef: string): void {
+    if (!this.credentials.has(credentialRef)) return;
+    const next = recordApiRequestUsage(this.getUsageSnapshot(credentialRef), raw, modelId);
     if (this.debugLogging) this.output.appendLine(`[usage] model=${modelId} recorded`);
-    this.setAndEmitUsage(next, entry);
+    this.setAndEmitUsage(next, credentialRef);
   }
 
-  private mergeAndEmitUsage(update: OrvixUsageSnapshot, entry: NativeEntry): void {
-    if (!this.entries.matches(entry)) return;
-    this.setAndEmitUsage(mergeUsageSnapshot(this.getUsageSnapshot(entry), update), entry);
+  private mergeAndEmitUsage(update: OrvixUsageSnapshot, credentialRef: string): void {
+    if (!this.credentials.has(credentialRef)) return;
+    this.setAndEmitUsage(mergeUsageSnapshot(this.getUsageSnapshot(credentialRef), update), credentialRef);
   }
 
-  private setAndEmitUsage(usage: OrvixUsageSnapshot, entry: NativeEntry): void {
-    if (!this.entries.matches(entry)) return;
-    this.usageByCredential.set(entry.credentialRef, usage);
+  private setAndEmitUsage(usage: OrvixUsageSnapshot, credentialRef: string): void {
+    if (!this.credentials.has(credentialRef)) return;
+    this.usageByCredential.set(credentialRef, usage);
     void this.persistOwnedState();
-    if (this.configuration.get("managementEntry", "") === entry.entryId) this.usageEmitter.fire(usage);
+    if (credentialRef === this.activeCredentialRef()) this.usageEmitter.fire(usage);
   }
 
   private persistOwnedState(): Promise<void> {
     this.stateMutation = this.stateMutation.catch(() => undefined).then(async () => {
       if (!this.state) return;
-      await this.state.update("orvixCopilot.forgottenEntries.v1", this.entries.forgottenIds());
       await this.state.update(CATALOG_STATE_KEY, Object.fromEntries(this.catalogs));
       const activity = Object.fromEntries([...this.usageByCredential].map(([ref, snapshot]) => [ref, {
         tracked: snapshot.tracked, lastRequest: snapshot.lastRequest,

@@ -11,13 +11,13 @@ export interface SecretStore {
   delete(key: string): PromiseLike<void>;
 }
 
-/** A browser billing session is explicitly bound by the user to one native entry. */
+/** A browser billing session is explicitly bound by the user to one credential. */
 export class OrvixAuth {
   private readonly mutations = new Map<string, Promise<void>>();
   constructor(private readonly secrets: SecretStore) {}
-  async getGatewaySession(entryId: string, credentialRef: string): Promise<GatewaySession | undefined> {
-    await this.mutations.get(entryId)?.catch(() => undefined);
-    const raw = await this.secrets.get(this.key(entryId));
+  async getGatewaySession(credentialRef: string): Promise<GatewaySession | undefined> {
+    await this.mutations.get(credentialRef)?.catch(() => undefined);
+    const raw = await this.secrets.get(this.key(credentialRef));
     if (!raw) return undefined;
     try {
       const parsed = JSON.parse(raw) as Partial<GatewaySession> & { credentialRef?: string };
@@ -28,25 +28,25 @@ export class OrvixAuth {
       };
     } catch { return undefined; }
   }
-  async storeGatewaySession(entryId: string, credentialRef: string, session: GatewaySession): Promise<void> {
+  async storeGatewaySession(credentialRef: string, session: GatewaySession): Promise<void> {
     if (!session.token.trim()) throw new Error("Orvix session token cannot be empty");
-    const key = this.key(entryId);
-    await this.mutate(entryId, () => this.secrets.store(key, JSON.stringify({
+    const key = this.key(credentialRef);
+    await this.mutate(credentialRef, () => this.secrets.store(key, JSON.stringify({
       credentialRef, token: session.token.trim(),
       ...(session.refreshToken?.trim() ? { refreshToken: session.refreshToken.trim() } : {}),
     })));
   }
-  async clearGatewaySession(entryId: string): Promise<void> {
-    const key = this.key(entryId);
-    await this.mutate(entryId, () => this.secrets.delete(key));
+  async clearGatewaySession(credentialRef: string): Promise<void> {
+    const key = this.key(credentialRef);
+    await this.mutate(credentialRef, () => this.secrets.delete(key));
   }
-  private async mutate(entryId: string, action: () => PromiseLike<void>): Promise<void> {
-    const next = (this.mutations.get(entryId) ?? Promise.resolve()).catch(() => undefined).then(action);
-    this.mutations.set(entryId, next);
-    try { await next; } finally { if (this.mutations.get(entryId) === next) this.mutations.delete(entryId); }
+  private async mutate(credentialRef: string, action: () => PromiseLike<void>): Promise<void> {
+    const next = (this.mutations.get(credentialRef) ?? Promise.resolve()).catch(() => undefined).then(action);
+    this.mutations.set(credentialRef, next);
+    try { await next; } finally { if (this.mutations.get(credentialRef) === next) this.mutations.delete(credentialRef); }
   }
-  private key(entryId: string): string {
-    if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(entryId)) throw new Error("Invalid Orvix entryId");
-    return `${GATEWAY_SESSION_PREFIX}${entryId}`;
+  private key(credentialRef: string): string {
+    if (!/^[a-f0-9]{16}$/.test(credentialRef)) throw new Error("Invalid Orvix credential reference");
+    return `${GATEWAY_SESSION_PREFIX}${credentialRef}`;
   }
 }

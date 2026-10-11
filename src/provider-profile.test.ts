@@ -1,36 +1,40 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { apiKeyFromConfiguration, entryIdFromConfiguration, NativeEntries, qualifiedModelId } from "./provider-profile";
+import { apiKeyFromConfiguration, Credentials } from "./provider-profile";
+import { credentialReference } from "./auth/auth";
 
-test("requires an explicit canonical entry ID rather than a display-name slug", () => {
-  for (const entryId of [undefined, "A B", "A-B", "first::second", "x".repeat(65)]) {
-    assert.throws(() => entryIdFromConfiguration({ entryId, name: "display label" }), /unique entryId/);
-  }
-  assert.equal(entryIdFromConfiguration({ entryId: "work-team" }), "work-team");
+test("requires a well-formed live Orvix API key from entry configuration", () => {
   assert.equal(apiKeyFromConfiguration({ apiKey: "  orv-sk_live_synthetic  " }), "orv-sk_live_synthetic");
   assert.equal(apiKeyFromConfiguration({ apiKey: "invalid" }), undefined);
+  assert.equal(apiKeyFromConfiguration({}), undefined);
 });
 
-test("rotation preserves selections and retires old handles, including rotating back", () => {
-  const entries = new NativeEntries();
-  const a = entries.register({ entryId: "work", apiKey: "orv-sk_live_a" });
-  assert.equal(entries.register({ entryId: "work", apiKey: "orv-sk_live_a" }).generation, a.generation);
-  const b = entries.register({ entryId: "work", apiKey: "orv-sk_live_b" });
-  assert.throws(() => entries.key(a), /changed or was forgotten/);
-  assert.equal(qualifiedModelId(a.entryId, "orvix/auto"), qualifiedModelId(b.entryId, "orvix/auto"));
-  const a2 = entries.register({ entryId: "work", apiKey: "orv-sk_live_a" });
-  assert.notEqual(a.generation, a2.generation);
-  assert.equal(entries.matches(a), false);
-  assert.equal(entries.key(a2), "orv-sk_live_a");
+test("credentials register once per distinct key and share fingerprints", () => {
+  const credentials = new Credentials();
+  const first = credentials.register("orv-sk_live_a");
+  const second = credentials.register("orv-sk_live_b");
+  const shared = credentials.register(" orv-sk_live_shared ");
+  const sameShared = credentials.register("orv-sk_live_shared");
+  assert.notEqual(first, second);
+  assert.equal(shared, sameShared);
+  assert.equal(credentials.keyForCredential(shared), "orv-sk_live_shared");
+  assert.match(shared, /^[a-f0-9]{16}$/);
+  assert.match(credentialReference("key"), /^[a-f0-9]{16}$/);
 });
 
-test("entries with the same key and label keep separate scope and explicit forget retires handles", () => {
-  const entries = new NativeEntries();
-  const a = entries.register({ entryId: "one", name: "Same", apiKey: "orv-sk_live_shared" });
-  const b = entries.register({ entryId: "two", name: "Same", apiKey: "orv-sk_live_shared" });
-  assert.notEqual(a.credentialRef, b.credentialRef);
-  entries.forget("one");
-  assert.throws(() => entries.key(a), /changed or was forgotten/);
-  assert.equal(entries.key(b), "orv-sk_live_shared");
-  assert.throws(() => entries.get("one"), /Select an available/);
+test("has and keyForCredential resolve only provisioned keys", () => {
+  const credentials = new Credentials();
+  const ref = credentials.register("orv-sk_live_a");
+  assert.equal(credentials.has(ref), true);
+  assert.equal(credentials.has("deadbeef"), false);
+  assert.equal(credentials.keyForCredential("deadbeef"), undefined);
+});
+
+test("activeApiKey prefers the most recently provisioned key", async () => {
+  const credentials = new Credentials();
+  assert.equal(credentials.activeApiKey(), undefined);
+  credentials.register("orv-sk_live_a");
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  credentials.register("orv-sk_live_b");
+  assert.equal(credentials.activeApiKey(), "orv-sk_live_b");
 });
