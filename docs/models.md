@@ -45,3 +45,28 @@ picker. Live API pricing wins when the provider returns it; otherwise managed
 (estimates, sourced from [models.dev](https://models.dev)). BYOK models without
 either source show no price. The [Orvix Platform](https://platform.orvix.id)
 dashboard is authoritative for credit balances and billing.
+
+## Copilot SDK sessions
+
+The **Copilot** session runtime uses a separate model-discovery path from
+ordinary **Local** chat. Its BYOK bridge discovers effort options specifically
+from `configurationSchema.properties.reasoningEffort`. Keep that property
+separate from Context Window and other controls, with the model's supported
+values and a default from that list.
+
+In VS Code 1.141, the SDK picker further restricts efforts to `none`, `minimal`,
+`low`, `medium`, `high`, `xhigh`, `max`, and `ultra`. Each model exposes only the
+intersection with its own supported list. The extension continues translating
+selected efforts to the provider's native request fields.
+
+Orvix's supported model effort lists survive the SDK filter, including
+`minimal` where a verified model profile accepts it. Routes without reasoning
+controls retain no effort picker or request parameter. Use Local chat for the
+extension's Context Window control; the SDK picker does not expose it.
+
+After installing an extension update, restart VS Code or reload every open
+window so the shared BYOK bridge receives fresh model metadata.
+
+References: [VS Code BYOK discovery](https://github.com/microsoft/vscode/blob/2a59476c9bfcb90b3ddc372c36762471b7dfad1c/src/vs/workbench/contrib/chat/browser/agentSessions/agentHost/agentHostByokLmHandler.ts),
+[SDK Thinking Level filtering](https://github.com/microsoft/vscode/blob/2a59476c9bfcb90b3ddc372c36762471b7dfad1c/src/vs/platform/agentHost/node/copilot/copilotAgent.ts#L2757),
+and [accepted agent-host effort tiers](https://github.com/microsoft/vscode/blob/2a59476c9bfcb90b3ddc372c36762471b7dfad1c/src/vs/platform/agentHost/common/reasoningEffort.ts).
