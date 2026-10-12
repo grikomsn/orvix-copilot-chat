@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1
+
+### Patch Changes
+
+- 717d385: Document Copilot SDK reasoning controls and their supported effort tiers, and add regression coverage for discovery and native request translation. Existing provider request behavior is preserved.
+
 ## 2.0.0
 
 ### Major Changes
