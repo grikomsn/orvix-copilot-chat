@@ -52,6 +52,8 @@ const MANAGED_MODEL_NAMES = new Map<string, string>([
   ["orvix/mimo-v2.5", "MiMo-V2.5"],
   ["orvix/mimo-v2.5-pro", "MiMo-V2.5-Pro"],
   ["orvix/mimo-v2.6-pro", "MiMo-V2.6-Pro"],
+  ["orvix/mimo-v2.6-flash", "MiMo-V2.6-Flash"],
+  ["orvix/nemotron-3-ultra-550b", "Nemotron 3 Ultra 550B"],
   ["orvix/glm-5.2", "GLM 5.2"],
   ["orvix/glm-5.3-flash", "GLM 5.3 Flash"],
   ["orvix/gpt-5.6-luna", "GPT-5.6 Luna"],
@@ -110,6 +112,9 @@ const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
   modelEntry("orvix/qwen-3.8-flash", 450_000, 65_536, false, true),
   modelEntry("orvix/qwen-3.8-max", 450_000, 32_768, true, true),
   modelEntry("orvix/kimi-k3", 450_000, 16_384, false, true),
+  modelEntry("orvix/mimo-v2.6-flash", 450_000, 32_768, true, true),
+  modelEntry("orvix/nemotron-3-ultra-550b", 450_000, 32_768, false, true),
+  modelEntry("orvix/qwen-3.8-omni-flash", 450_000, 32_768, true, true),
 ]);
 
 export const FALLBACK_MODEL_METADATA: readonly OrvixModelMetadata[] = [

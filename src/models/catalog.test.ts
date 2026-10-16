@@ -187,6 +187,39 @@ test("mirrors live capabilities for newly added managed models", () => {
   assert.equal(getModelMetadata("orvix/jev").maxOutputTokens, 32_000);
   assert.equal(getModelMetadata("orvix/qwen-3.8-flash").imageInput, false);
   assert.equal(getModelMetadata("orvix/qwen-3.8-flash").maxOutputTokens, 65_536);
+  assert.deepEqual(getModelMetadata("orvix/mimo-v2.6-flash"), {
+    id: "orvix/mimo-v2.6-flash",
+    name: "MiMo-V2.6-Flash",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 32_768,
+    imageInput: true,
+    toolCalling: true,
+    reasoningEffort: false,
+    cost: undefined,
+  });
+  assert.deepEqual(getModelMetadata("orvix/nemotron-3-ultra-550b"), {
+    id: "orvix/nemotron-3-ultra-550b",
+    name: "Nemotron 3 Ultra 550B",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 32_768,
+    imageInput: false,
+    toolCalling: true,
+    reasoningEffort: false,
+    cost: undefined,
+  });
+  assert.deepEqual(getModelMetadata("orvix/qwen-3.8-omni-flash"), {
+    id: "orvix/qwen-3.8-omni-flash",
+    name: "Qwen 3.8 Omni Flash",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 32_768,
+    imageInput: true,
+    toolCalling: true,
+    reasoningEffort: false,
+    cost: undefined,
+  });
 });
 
 test("uses exactly the discovered catalog and advertised metadata", () => {
