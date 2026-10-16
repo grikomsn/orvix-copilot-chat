@@ -24,7 +24,9 @@ const MANAGED_MODEL_UPSTREAM_COST: Readonly<Record<string, ModelCost>> = {
   "orvix/muse-spark-1.3": { input: 1.25, output: 4.25, cacheRead: 0.15 },
   "orvix/mimo-v2.5": { input: 0.14, output: 0.28, cacheRead: 0.0028 },
   "orvix/mimo-v2.5-pro": { input: 0.435, output: 0.87, cacheRead: 0.0036 },
+  "orvix/mimo-v2.6-flash": { input: 0.14, output: 0.28, cacheRead: 0.0028 },
   "orvix/mimo-v2.6-pro": { input: 0.435, output: 0.87, cacheRead: 0.0036 },
+  "orvix/nemotron-3-ultra-550b": { input: 0.5, output: 2.5, cacheRead: 0.15 },
   "orvix/glm-5.2": { input: 1.4, output: 4.4, cacheRead: 0.26 },
   "orvix/glm-5.3-flash": { input: 0.075, output: 0.25, cacheRead: 0.015 },
   "orvix/gpt-5.6-luna": { input: 0.2, output: 1.2, cacheRead: 0.02 },
@@ -41,6 +43,7 @@ const MANAGED_MODEL_UPSTREAM_COST: Readonly<Record<string, ModelCost>> = {
   "orvix/hy4-preview": { input: 0.834, output: 2.501, cacheRead: 0.042 },
   "orvix/minimax-m3": { input: 0.3, output: 1.2, cacheRead: 0.06 },
   "orvix/qwen-3.8-flash": { input: 0.16, output: 0.47, cacheRead: 0.016 },
+  "orvix/qwen-3.8-omni-flash": { input: 0.15, output: 0.47, cacheRead: 0.016 },
   "orvix/qwen-3.8-max": { input: 2, output: 6, cacheRead: 0.25 },
   "orvix/kimi-k3": { input: 3, output: 15, cacheRead: 0.3 },
 };
