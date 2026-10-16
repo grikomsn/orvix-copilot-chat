@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2
+
+### Patch Changes
+
+- d1b0a05: Resync bundled Orvix managed-model metadata with the live catalog.
+
 ## 2.0.1
 
 ### Patch Changes
