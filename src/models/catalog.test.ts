@@ -196,7 +196,7 @@ test("mirrors live capabilities for newly added managed models", () => {
     imageInput: true,
     toolCalling: true,
     reasoningEffort: false,
-    cost: undefined,
+    cost: { input: 0.14, output: 0.28, cacheRead: 0.0028 },
   });
   assert.deepEqual(getModelMetadata("orvix/nemotron-3-ultra-550b"), {
     id: "orvix/nemotron-3-ultra-550b",
@@ -207,7 +207,7 @@ test("mirrors live capabilities for newly added managed models", () => {
     imageInput: false,
     toolCalling: true,
     reasoningEffort: false,
-    cost: undefined,
+    cost: { input: 0.5, output: 2.5, cacheRead: 0.15 },
   });
   assert.deepEqual(getModelMetadata("orvix/qwen-3.8-omni-flash"), {
     id: "orvix/qwen-3.8-omni-flash",
@@ -218,7 +218,7 @@ test("mirrors live capabilities for newly added managed models", () => {
     imageInput: true,
     toolCalling: true,
     reasoningEffort: false,
-    cost: undefined,
+    cost: { input: 0.15, output: 0.47, cacheRead: 0.016 },
   });
 });
 

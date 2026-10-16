@@ -30,6 +30,9 @@ test("does not guess Orvix rates when live metadata omits pricing", () => {
   assert.deepEqual(orvixModelCost("orvix/mimo-v2.6-pro"), { input: 0.435, output: 0.87, cacheRead: 0.0036 });
   assert.deepEqual(orvixModelCost("orvix/hy3"), { input: 0.132, output: 0.528, cacheRead: 0.033 });
   assert.deepEqual(orvixModelCost("orvix/hy4-preview"), { input: 0.834, output: 2.501, cacheRead: 0.042 });
+  assert.deepEqual(orvixModelCost("orvix/mimo-v2.6-flash"), { input: 0.14, output: 0.28, cacheRead: 0.0028 });
+  assert.deepEqual(orvixModelCost("orvix/nemotron-3-ultra-550b"), { input: 0.5, output: 2.5, cacheRead: 0.15 });
+  assert.deepEqual(orvixModelCost("orvix/qwen-3.8-omni-flash"), { input: 0.15, output: 0.47, cacheRead: 0.016 });
   assert.equal(orvixModelCost("orvix/grok-4.7:free"), undefined);
   // Live pricing still wins over the bundled estimate.
   assert.deepEqual(orvixModelCost("orvix/example", { input: 1, output: 2 }), { input: 1, output: 2 });
