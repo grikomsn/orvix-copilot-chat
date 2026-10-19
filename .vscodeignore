@@ -5,6 +5,7 @@
 docs/**
 assets/cover.jpg
 assets/*.zip
+test/**
 tmp/**
 .env*
 .gitignore
@@ -22,5 +23,3 @@ tsconfig.json
 package-lock.json
 *.vsix
 .DS_Store
-
-test/**

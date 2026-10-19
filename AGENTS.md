@@ -32,6 +32,7 @@
 - Treat the live Orvix `/models` response as authoritative. Persist it for unavailable refreshes, but never merge stale entries into a successful response.
 - Preserve Orvix's managed `orvix/*` and unprefixed BYOK model IDs. Do not guess prices or send undocumented request fields.
 - Retry only pre-stream transient failures and keep protocol-specific behavior covered by tests.
+- Never let a module-init initializer (for example a map built via `modelEntry(...)`) reference a `const` declared later in the same file: TypeScript's CommonJS emit can reorder top-level declarations, so a later-read leaf lookup map triggers a "Cannot access … before initialization" TDZ crash at module load even though `tsc` is clean. Keep leaf lookup constants above the maps that consume them.
 - When commands, settings, models, security behavior, or workflows change, keep `package.json`, tests, and documentation synchronized.
 - Do not commit generated `out/`, source maps, VSIX files, logs, or unrelated dependency churn.
 
