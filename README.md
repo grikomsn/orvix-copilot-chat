@@ -43,6 +43,8 @@ To use more than one project or key, add another **Orvix** entry with a differen
 
 This major release uses group-name native entries exclusively. Recreate old entries with the new single-field flow and re-import any billing session. Old entry IDs and unbound sessions are never read or migrated.
 
+Context token counts are estimates. Tool-result text, tool arguments, thinking, and image inputs are included in context budgeting. If the service rejects a full context window, run `/compact` in Copilot Chat, reduce attachments or tool output, or start a new chat.
+
 ## Documentation
 
 - [Setup, settings, and troubleshooting](docs/setup.md)

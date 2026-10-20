@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 import { randomUUID } from "node:crypto";
+import { estimateChatTokens } from "./provider/token-count";
+import { withContextOverflowHint } from "./provider/context-error";
 import { OrvixAuth, credentialReference, type GatewaySession } from "./auth/auth";
 import { messageOf } from "./errors";
 import {
@@ -451,7 +453,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         throw new Error(`Orvix request for ${model.rawModelId} received no data for ${idleTimeoutSeconds} seconds`);
       if (timedOut === "total")
         throw new Error(`Orvix request for ${model.rawModelId} exceeded ${timeoutSeconds} seconds`);
-      throw error;
+      throw withContextOverflowHint(error);
     } finally {
       reporter.finish();
       controller.abort();
@@ -470,8 +472,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     value: string | vscode.LanguageModelChatRequestMessage,
     _token: vscode.CancellationToken,
   ): Promise<number> {
-    const text = typeof value === "string" ? value : messageToText(value);
-    return Math.max(1, Math.ceil(text.length / 4));
+    return estimateChatTokens(value);
   }
 
   async testConnection(): Promise<{
