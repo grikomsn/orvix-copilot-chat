@@ -115,6 +115,17 @@ const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
   modelEntry("orvix/mimo-v2.6-flash", 450_000, 32_768, true, true),
   modelEntry("orvix/nemotron-3-ultra-550b", 450_000, 32_768, false, true),
   modelEntry("orvix/qwen-3.8-omni-flash", 450_000, 32_768, true, true),
+  modelEntry("orvix/claude-haiku-5.5", 450_000, 32_768, true, true),
+  modelEntry("orvix/claude-sonnet-5.5", 450_000, 32_768, true, true),
+  modelEntry("orvix/deepseek-v4.1-flash-uncensored", 450_000, 131_072),
+  modelEntry("orvix/gemini-4-argon", 450_000, 65_536, true, true),
+  modelEntry("orvix/glm-5.3-flash-uncensored", 450_000, 131_072),
+  modelEntry("orvix/gpt-6-astra", 450_000, 128_000, true, true, true),
+  modelEntry("orvix/gpt-6-astra-fast", 450_000, 128_000, true, true, true),
+  modelEntry("orvix/gpt-6-luna", 450_000, 128_000, true, true, true),
+  modelEntry("orvix/gpt-6-sol", 450_000, 128_000, true, true, true),
+  modelEntry("orvix/minimax-m3.1-flash", 450_000, 32_768, false, true),
+  modelEntry("orvix/muse-wonder-1.0", 450_000, 32_768, true, true),
 ]);
 
 export const FALLBACK_MODEL_METADATA: readonly OrvixModelMetadata[] = [
