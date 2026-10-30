@@ -138,7 +138,7 @@ test("mirrors live capabilities for newly added managed models", () => {
     version: "unknown",
     contextLength: 450_000,
     maxOutputTokens: 131_072,
-    imageInput: false,
+    imageInput: true,
     toolCalling: true,
     reasoningEffort: true,
     cost: { input: 0.15, output: 0.6, cacheRead: 0.003 },
@@ -220,6 +220,111 @@ test("mirrors live capabilities for newly added managed models", () => {
     reasoningEffort: false,
     cost: { input: 0.15, output: 0.47, cacheRead: 0.016 },
   });
+  assert.deepEqual(getModelMetadata("orvix/claude-haiku-5.5"), {
+    id: "orvix/claude-haiku-5.5",
+    name: "Claude Haiku 5.5",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 32_768,
+    imageInput: true,
+    toolCalling: true,
+    reasoningEffort: false,
+    cost: { input: 0.1, output: 0.5, cacheRead: 0.01 },
+  });
+  assert.deepEqual(getModelMetadata("orvix/claude-sonnet-5.5"), {
+    id: "orvix/claude-sonnet-5.5",
+    name: "Claude Sonnet 5.5",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 32_768,
+    imageInput: true,
+    toolCalling: true,
+    reasoningEffort: false,
+    cost: { input: 2, output: 10, cacheRead: 0.1 },
+  });
+  assert.deepEqual(getModelMetadata("orvix/gemini-4-argon"), {
+    id: "orvix/gemini-4-argon",
+    name: "Gemini 4 Argon",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 65_536,
+    imageInput: true,
+    toolCalling: true,
+    reasoningEffort: false,
+    cost: { input: 2, output: 10, cacheRead: 0.1 },
+  });
+  assert.deepEqual(getModelMetadata("orvix/gpt-6-astra"), {
+    id: "orvix/gpt-6-astra",
+    name: "GPT-6 Astra",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 128_000,
+    imageInput: true,
+    toolCalling: true,
+    reasoningEffort: true,
+    cost: { input: 10, output: 50, cacheRead: 1 },
+  });
+  // No upstream rate exists for the fast variant, so it inherits none.
+  assert.equal(getModelMetadata("orvix/gpt-6-astra-fast").maxOutputTokens, 128_000);
+  assert.equal(getModelMetadata("orvix/gpt-6-astra-fast").cost, undefined);
+  assert.deepEqual(getModelMetadata("orvix/gpt-6-luna"), {
+    id: "orvix/gpt-6-luna",
+    name: "GPT-6 Luna",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 128_000,
+    imageInput: true,
+    toolCalling: true,
+    reasoningEffort: true,
+    cost: { input: 0.1, output: 0.5, cacheRead: 0.01 },
+  });
+  assert.deepEqual(getModelMetadata("orvix/gpt-6-sol"), {
+    id: "orvix/gpt-6-sol",
+    name: "GPT-6 Sol",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 128_000,
+    imageInput: true,
+    toolCalling: true,
+    reasoningEffort: true,
+    cost: { input: 2, output: 10, cacheRead: 0.2 },
+  });
+  assert.deepEqual(getModelMetadata("orvix/minimax-m3.1-flash"), {
+    id: "orvix/minimax-m3.1-flash",
+    name: "MiniMax M3.1 Flash",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 32_768,
+    imageInput: false,
+    toolCalling: true,
+    reasoningEffort: false,
+    cost: { input: 0.15, output: 0.6, cacheRead: 0.015 },
+  });
+  assert.deepEqual(getModelMetadata("orvix/muse-wonder-1.0"), {
+    id: "orvix/muse-wonder-1.0",
+    name: "Muse Wonder 1.0",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 32_768,
+    imageInput: true,
+    toolCalling: true,
+    reasoningEffort: false,
+    cost: { input: 4, output: 20, cacheRead: 0.2 },
+  });
+  assert.deepEqual(getModelMetadata("orvix/deepseek-v4.1-flash-uncensored"), {
+    id: "orvix/deepseek-v4.1-flash-uncensored",
+    name: "DeepSeek V4.1 Flash Uncensored",
+    version: "unknown",
+    contextLength: 450_000,
+    maxOutputTokens: 131_072,
+    imageInput: false,
+    toolCalling: false,
+    reasoningEffort: false,
+    cost: { input: 0.33, output: 1.32, cacheRead: 0.00825 },
+  });
+  // No upstream rate exists for the uncensored GLM variant.
+  assert.equal(getModelMetadata("orvix/glm-5.3-flash-uncensored").maxOutputTokens, 131_072);
+  assert.equal(getModelMetadata("orvix/glm-5.3-flash-uncensored").cost, undefined);
 });
 
 test("uses exactly the discovered catalog and advertised metadata", () => {
