@@ -66,9 +66,18 @@ const MANAGED_MODEL_NAMES = new Map<string, string>([
   ["orvix/gemini-3.7-flash", "Gemini 3.7 Flash"],
   ["orvix/gemini-3.8-flash", "Gemini 3.8 Flash"],
   ["orvix/minimax-m3", "MiniMax M3"],
+  ["orvix/minimax-m3.1-flash", "MiniMax M3.1 Flash"],
   ["orvix/qwen-3.8-flash", "Qwen 3.8 Flash"],
   ["orvix/qwen-3.8-max", "Qwen 3.8 Max"],
   ["orvix/kimi-k3", "Kimi K3"],
+  ["orvix/claude-haiku-5.5", "Claude Haiku 5.5"],
+  ["orvix/claude-sonnet-5.5", "Claude Sonnet 5.5"],
+  ["orvix/gemini-4-argon", "Gemini 4 Argon"],
+  ["orvix/gpt-6-astra", "GPT-6 Astra"],
+  ["orvix/gpt-6-astra-fast", "GPT-6 Astra Fast"],
+  ["orvix/gpt-6-luna", "GPT-6 Luna"],
+  ["orvix/gpt-6-sol", "GPT-6 Sol"],
+  ["orvix/muse-wonder-1.0", "Muse Wonder 1.0"],
 ]);
 
 // Casing for recurring model-family tokens that plain capitalization gets
@@ -103,7 +112,7 @@ const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
   modelEntry("orvix/grok-4.7", 450_000, 32_768, true, true),
   modelEntry("orvix/deepseek-v4-flash", 450_000, 384_000, false, true),
   modelEntry("orvix/deepseek-v4-pro", 450_000, 384_000, false, true, true),
-  modelEntry("orvix/deepseek-v4.1-flash", 450_000, 131_072, false, true, true),
+  modelEntry("orvix/deepseek-v4.1-flash", 450_000, 131_072, true, true, true),
   modelEntry("orvix/gemini-3.7-flash", 450_000, 32_000, true, true),
   modelEntry("orvix/gemini-3.8-flash", 450_000, 32_000, true, true),
   modelEntry("orvix/hy3", 450_000, 32_768, false, true, true),
@@ -115,6 +124,17 @@ const MANAGED_MODEL_METADATA = new Map<string, OrvixModelMetadata>([
   modelEntry("orvix/mimo-v2.6-flash", 450_000, 32_768, true, true),
   modelEntry("orvix/nemotron-3-ultra-550b", 450_000, 32_768, false, true),
   modelEntry("orvix/qwen-3.8-omni-flash", 450_000, 32_768, true, true),
+  modelEntry("orvix/claude-haiku-5.5", 450_000, 32_768, true, true),
+  modelEntry("orvix/claude-sonnet-5.5", 450_000, 32_768, true, true),
+  modelEntry("orvix/deepseek-v4.1-flash-uncensored", 450_000, 131_072),
+  modelEntry("orvix/gemini-4-argon", 450_000, 65_536, true, true),
+  modelEntry("orvix/glm-5.3-flash-uncensored", 450_000, 131_072),
+  modelEntry("orvix/gpt-6-astra", 450_000, 128_000, true, true, true),
+  modelEntry("orvix/gpt-6-astra-fast", 450_000, 128_000, true, true, true),
+  modelEntry("orvix/gpt-6-luna", 450_000, 128_000, true, true, true),
+  modelEntry("orvix/gpt-6-sol", 450_000, 128_000, true, true, true),
+  modelEntry("orvix/minimax-m3.1-flash", 450_000, 32_768, false, true),
+  modelEntry("orvix/muse-wonder-1.0", 450_000, 32_768, true, true),
 ]);
 
 export const FALLBACK_MODEL_METADATA: readonly OrvixModelMetadata[] = [
