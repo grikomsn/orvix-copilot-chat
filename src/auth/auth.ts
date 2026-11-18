@@ -1,8 +1,7 @@
-import { createHash } from "node:crypto";
-
 const GATEWAY_SESSION_PREFIX = "orvixCopilot.entryGatewaySession.v1.";
-export function credentialReference(apiKey: string): string {
-  return createHash("sha256").update(apiKey.trim()).digest("hex").slice(0, 16);
+/** Orvix secret keys are live-mode `orv-sk_live_` keys; anything else is rejected before use. */
+export function isOrvixApiKey(apiKey: string): boolean {
+  return apiKey.startsWith("orv-sk_live_");
 }
 export interface GatewaySession { token: string; refreshToken?: string }
 export interface SecretStore {

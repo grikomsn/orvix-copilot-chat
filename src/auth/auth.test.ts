@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { credentialReference, OrvixAuth, type SecretStore } from "./auth";
+import { credentialReference } from "../kit/credentials";
+import { isOrvixApiKey, OrvixAuth, type SecretStore } from "./auth";
 
 class MemorySecrets implements SecretStore {
   readonly values = new Map<string, string>();
@@ -54,4 +55,9 @@ test("a queued removal retires a billing session while its write is pending", as
   release();
   await Promise.all([writing, removing]);
   assert.equal(await auth.getGatewaySession(work), undefined);
+});
+
+test("accepts only live-mode Orvix secret keys", () => {
+  assert.equal(isOrvixApiKey("orv-sk_live_synthetic"), true);
+  assert.equal(isOrvixApiKey("invalid"), false);
 });

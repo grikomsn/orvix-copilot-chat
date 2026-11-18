@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { applyEffortIfSupported } from "../provider/effort";
-import { buildModelConfigurationSchema, contextSizeOptions, resolveEffortValue } from "./options";
+import { buildModelConfigurationSchema, resolveEffortValue } from "./options";
+import { contextSizeOptions } from "../kit/context-size";
 
 // VS Code 1.141 reads reasoningEffort, then filters through its agent-host tiers.
 const SDK_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
