@@ -5,14 +5,16 @@
 - These instructions apply to the entire repository.
 - This is a TypeScript VS Code extension. Use Node.js 22+ and npm; `package-lock.json` is authoritative.
 - Install from a clean checkout with `npm ci`.
+- `src/kit/` is the shared copilot-chat-kit git submodule. Clone with `--recurse-submodules` (or run `git submodule update --init`). Never edit kit files only here: commit and push the change to the kit repository (inside `src/kit` or in its own checkout), then commit the submodule bump with `git submodule update --remote src/kit`.
 
 ## Code map
 
 - `src/extension.ts`: activation and dependency wiring.
+- `src/kit/`: shared [copilot-chat-kit](https://github.com/grikomsn/copilot-chat-kit) git submodule (Unicode-safe JSON, errors, retry, request deadlines, SSE and Chat Completions parsing, message conversion, history trimming, response writing, usage payloads, pricing, context tiers, credentials, models.dev snapshots, inline-suggestion shell, VS Code API augmentations). Provider quirks stay outside it and configure it through options.
 - `src/commands/commands.ts`: commands, diagnostics, and connection workflows.
-- `src/auth/auth.ts`: API-key validation and Secret Storage.
+- `src/auth/auth.ts`: Orvix key-shape validation and the per-credential billing gateway session in Secret Storage.
 - `src/provider.ts`: VS Code chat-provider integration and live model discovery.
-- `src/provider/`: message conversion, request construction, response reporting, and retry policy.
+- `src/provider/`: request construction and reasoning-effort gating (message conversion, trimming, reporting, and retry come from the kit).
 - `src/models/`: catalog persistence and capability/pricing enrichment.
 - `src/transport/`: endpoints, errors, and incremental SSE parsing.
 - Tests are colocated as `src/**/*.test.ts`; `out/` and `*.vsix` are generated artifacts.

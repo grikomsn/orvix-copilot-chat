@@ -1,9 +1,17 @@
 import * as vscode from "vscode";
 import { randomUUID } from "node:crypto";
-import { estimateChatTokens } from "./provider/token-count";
-import { withContextOverflowHint } from "./provider/context-error";
-import { OrvixAuth, credentialReference, type GatewaySession } from "./auth/auth";
-import { messageOf } from "./errors";
+import { ChatCompletionStreamParser } from "./kit/chat-completions";
+import { contextSizeOptions, resolveContextCap, resolveContextSize } from "./kit/context-size";
+import { apiKeyFromConfiguration, credentialReference, Credentials } from "./kit/credentials";
+import { httpError, messageOf, withContextOverflowHint } from "./kit/errors";
+import { modelPricingFields } from "./kit/pricing";
+import { ephemeralSnapshotStore } from "./kit/remote-snapshot";
+import { ChatEventReporter, ResponseWriter } from "./kit/response-writer";
+import { fetchWithRetry, gatewayOrRateLimitStatuses } from "./kit/retry";
+import { readTextStream, RequestDeadline } from "./kit/stream";
+import { estimateChatTokens } from "./kit/token-count";
+import { stringifyWellFormedJson } from "./kit/unicode";
+import { isOrvixApiKey, OrvixAuth, type GatewaySession } from "./auth/auth";
 import {
   advertisedModelLimits,
   FALLBACK_MODEL_METADATA,
@@ -15,27 +23,17 @@ import {
   type OrvixApiModel,
   type OrvixModelMetadata,
 } from "./models/catalog";
-import { modelPricingFields } from "./models/pricing";
 import {
   applyReasoningEffort,
   buildModelConfigurationSchema,
-  contextSizeOptions,
-  resolveContextCap,
-  resolveContextSize,
   resolveEffortValue,
   type ReasoningEffort,
 } from "./models/options";
 import { parseCatalogSnapshots } from "./models/cache";
 import { ModelsDevMetadata, resolveModelsDevMetadata } from "./models/metadata";
-import { ChatCompletionStreamParser, validateStreamCompletion } from "./transport/sse";
 import { ORVIX_ENDPOINTS, ORVIX_GATEWAY_ENDPOINTS, orvixHeaders } from "./transport/protocol";
-import { apiError } from "./transport/errors";
 import { modelFamily } from "./models/family";
-import { apiKeyFromConfiguration, Credentials } from "./provider-profile";
-import { isTransientNetworkError, isTransientServerError, retryDelayMs } from "./provider/retry";
-import { messageToText } from "./provider/messages";
 import { buildRequest } from "./provider/request";
-import { StreamResponseReporter } from "./provider/response";
 import {
   mergeUsageSnapshot,
   parseBillingPayload,
@@ -45,6 +43,7 @@ import {
   parseImageCredits,
   parseTopUpsPayload,
   recordApiRequestUsage,
+  toProviderUsagePayload,
   type OrvixUsageSnapshot,
 } from "./usage/domain";
 
@@ -88,7 +87,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
   ) {
     // Only inference activity is persisted; billing ownership is freshly bound.
     for (const [ref, usage] of Object.entries(initialUsage)) this.usageByCredential.set(ref, usage);
-    this.metadata = new ModelsDevMetadata(state ?? new MemoryMetadataCache(), this.fetcher);
+    this.metadata = new ModelsDevMetadata(state ?? ephemeralSnapshotStore(), this.fetcher);
     for (const [key, catalog] of Object.entries(parseCatalogSnapshots(state?.get<unknown>(CATALOG_STATE_KEY))))
       this.catalogs.set(key, catalog);
   }
@@ -171,7 +170,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       if (billingResponse.status === 401) {
         throw new Error("Orvix usage requires a refreshed browser sign-in");
       }
-      if (!billingResponse.ok) throw await apiError("Unable to read Orvix billing", billingResponse);
+      if (!billingResponse.ok) throw await httpError("Unable to read Orvix billing", billingResponse);
       const billing = parseBillingPayload(await billingResponse.json());
       merge({ credits: billing, apiError: undefined, updatedAt: Date.now() });
 
@@ -185,7 +184,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
           throw new Error("Orvix usage requires a refreshed browser sign-in");
         }
         if (!transactionResponse.ok)
-          throw await apiError("Unable to read Orvix credit transactions", transactionResponse);
+          throw await httpError("Unable to read Orvix credit transactions", transactionResponse);
         transactions = parseTransactionsPayload(await transactionResponse.json());
       } catch (error) {
         this.output.appendLine(`[usage] transaction refresh unavailable: ${messageOf(error)}`);
@@ -204,7 +203,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       if (summaryResponse.status === 401) {
         throw new Error("Orvix usage requires a refreshed browser sign-in");
       }
-      if (!summaryResponse.ok) throw await apiError("Unable to read Orvix usage summary", summaryResponse);
+      if (!summaryResponse.ok) throw await httpError("Unable to read Orvix usage summary", summaryResponse);
       const summary = parseUsageSummaryPayload(await summaryResponse.json());
       merge({ summary, updatedAt: Date.now() });
     } catch (error) {
@@ -218,7 +217,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       if (balanceResponse.status === 401) {
         throw new Error("Orvix usage requires a refreshed browser sign-in");
       }
-      if (!balanceResponse.ok) throw await apiError("Unable to read Orvix balance", balanceResponse);
+      if (!balanceResponse.ok) throw await httpError("Unable to read Orvix balance", balanceResponse);
       const balanceBody = await balanceResponse.json();
       const account = parseAccountBalancePayload(balanceBody);
       merge({ account, updatedAt: Date.now() });
@@ -237,7 +236,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         if (topUpResponse.status === 401) {
           throw new Error("Orvix usage requires a refreshed browser sign-in");
         }
-        if (!topUpResponse.ok) throw await apiError("Unable to read Orvix top-ups", topUpResponse);
+        if (!topUpResponse.ok) throw await httpError("Unable to read Orvix top-ups", topUpResponse);
         topUps = parseTopUpsPayload(await topUpResponse.json());
       } catch (error) {
         this.output.appendLine(`[usage] Orvix top-ups refresh unavailable: ${messageOf(error)}`);
@@ -288,7 +287,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     const response = await this.fetcher(ORVIX_GATEWAY_ENDPOINTS.billing, {
       headers: this.gatewaySessionHeaders(session, "application/json"),
     });
-    if (!response.ok) throw await apiError("Unable to validate Orvix usage session", response);
+    if (!response.ok) throw await httpError("Unable to validate Orvix usage session", response);
   }
 
   async refreshModels(): Promise<string[]> {
@@ -306,7 +305,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     if (token.isCancellationRequested || !options.configuration) return [];
     let apiKey: string | undefined;
     try {
-      apiKey = apiKeyFromConfiguration(options.configuration);
+      apiKey = apiKeyFromConfiguration(options.configuration, isOrvixApiKey);
       if (!apiKey) throw new Error("Set a valid Orvix API key in Manage Language Models");
     } catch (error) {
       const message = messageOf(error);
@@ -389,27 +388,14 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       model.reasoningEffort,
       resolveContextCap(resolveContextSize(options.modelConfiguration), model.maxInputTokens),
     );
-    const reporter = new StreamResponseReporter(progress, vscode, randomUUID(),
-      (usage) => this.captureRequestUsage(usage, model.rawModelId, model.credentialRef));
-    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-    const controller = new AbortController();
-    const cancellation = token.onCancellationRequested(() => controller.abort());
+    const reporter = new ChatEventReporter(new ResponseWriter(progress, vscode, "orvix", randomUUID()), {
+      label: "Orvix",
+      toUsagePayload: toProviderUsagePayload,
+      onUsage: (usage) => this.captureRequestUsage(usage, model.rawModelId, model.credentialRef),
+    });
     const timeoutSeconds = Math.max(10, this.configuration.get("requestTimeoutSeconds", 600));
     const idleTimeoutSeconds = Math.max(10, this.configuration.get("streamIdleTimeoutSeconds", 120));
-    let timedOut: "total" | "idle" | undefined;
-    const totalTimeout = setTimeout(() => {
-      timedOut = "total";
-      controller.abort();
-    }, timeoutSeconds * 1000);
-    let idleTimeout: ReturnType<typeof setTimeout> | undefined;
-    const resetIdleTimeout = (): void => {
-      if (idleTimeout) clearTimeout(idleTimeout);
-      idleTimeout = setTimeout(() => {
-        timedOut = "idle";
-        controller.abort();
-      }, idleTimeoutSeconds * 1000);
-    };
-    resetIdleTimeout();
+    const deadline = new RequestDeadline({ totalMs: timeoutSeconds * 1000, idleMs: idleTimeoutSeconds * 1000, cancellation: token });
     try {
       if (this.debugLogging) {
         this.output.appendLine(
@@ -421,49 +407,27 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       const response = await this.fetchInference({
         method: "POST",
         headers: this.requestHeaders(apiKey, "text/event-stream"),
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
+        body: stringifyWellFormedJson(requestBody),
+        signal: deadline.signal,
       });
-      if (!response.ok) throw await apiError(`Orvix request failed for ${model.rawModelId}`, response);
+      if (!response.ok) throw await httpError(`Orvix request failed for ${model.rawModelId}`, response);
       if (!response.body) throw new Error("Orvix returned an empty response stream");
 
-      const parser = new ChatCompletionStreamParser();
-      reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      while (true) {
-        if (token.isCancellationRequested) {
-          await reader.cancel();
-          return;
-        }
-        const result = await reader.read();
-        if (result.done) break;
-        resetIdleTimeout();
-        for (const event of parser.push(decoder.decode(result.value, { stream: true }))) {
-          // The final streamed chunk carries the `usage` object; capture it
-          // when present so the status bar reflects the request immediately.
-          reporter.report(event);
-        }
-      }
-      for (const event of parser.push(decoder.decode())) reporter.report(event);
+      const parser = new ChatCompletionStreamParser({ label: "Orvix", surfaceStreamErrors: true });
+      const completed = await readTextStream(response.body, (text) => {
+        // The final streamed chunk carries `usage`; the reporter captures it
+        // so the status bar reflects the request immediately.
+        for (const event of parser.push(text)) reporter.report(event);
+      }, { deadline, isCancelled: () => token.isCancellationRequested });
+      if (!completed) return;
       for (const event of parser.finish()) reporter.report(event);
-      validateStreamCompletion(parser.finishReason);
+      parser.validateCompletion(requestBody.tool_choice === "required");
     } catch (error) {
       if (token.isCancellationRequested) return;
-      if (timedOut === "idle")
-        throw new Error(`Orvix request for ${model.rawModelId} received no data for ${idleTimeoutSeconds} seconds`);
-      if (timedOut === "total")
-        throw new Error(`Orvix request for ${model.rawModelId} exceeded ${timeoutSeconds} seconds`);
-      throw withContextOverflowHint(error);
+      throw deadline.timeoutError(`Orvix request for ${model.rawModelId}`) ?? withContextOverflowHint(error);
     } finally {
       reporter.finish();
-      controller.abort();
-      if (reader) {
-        await reader.cancel().catch(() => undefined);
-        reader.releaseLock();
-      }
-      clearTimeout(totalTimeout);
-      if (idleTimeout) clearTimeout(idleTimeout);
-      cancellation.dispose();
+      deadline.dispose();
     }
   }
 
@@ -507,7 +471,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
         reasoningEffort ? applyReasoningEffort(requestBody, reasoningEffort) : requestBody,
       ),
     });
-    if (!response.ok) throw await apiError("Orvix connection test failed", response);
+    if (!response.ok) throw await httpError("Orvix connection test failed", response);
     const responseBody = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
       usage?: Record<string, unknown>;
@@ -526,7 +490,7 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
       headers: this.requestHeaders(apiKey, "application/json, application/problem+json"),
       signal,
     });
-    if (!response.ok) throw await apiError("Unable to list Orvix models", response);
+    if (!response.ok) throw await httpError("Unable to list Orvix models", response);
     const body = (await response.json()) as { data?: OrvixApiModel[] };
     if (!Array.isArray(body.data)) throw new Error("Orvix returned an invalid model directory");
     const enrichment = await this.metadata.getOrRefresh();
@@ -590,22 +554,12 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
     return this.credentials.has(credentialRef) ? session : undefined;
   }
 
-  private async fetchInference(init: RequestInit): Promise<Response> {
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        const response = await this.fetcher(ORVIX_ENDPOINTS.chat, init);
-        if (attempt >= 2 || !isTransientServerError(response.status)) return response;
-        const delay = retryDelayMs(attempt, response.headers.get("retry-after"));
-        this.output.appendLine(`[retry] transient HTTP ${response.status}; attempt=${attempt + 2} delayMs=${delay}`);
-        await response.body?.cancel().catch(() => undefined);
-        await waitForRetry(delay, init.signal);
-      } catch (error) {
-        if (attempt >= 2 || !isTransientNetworkError(error)) throw error;
-        const delay = retryDelayMs(attempt);
-        this.output.appendLine(`[retry] transient network failure; attempt=${attempt + 2} delayMs=${delay}`);
-        await waitForRetry(delay, init.signal);
-      }
-    }
+  private fetchInference(init: RequestInit): Promise<Response> {
+    return fetchWithRetry(() => this.fetcher(ORVIX_ENDPOINTS.chat, init), {
+      isTransientStatus: gatewayOrRateLimitStatuses,
+      signal: init.signal,
+      log: (message) => this.output.appendLine(message),
+    });
   }
 
   /**
@@ -647,24 +601,4 @@ export class OrvixProvider implements vscode.LanguageModelChatProvider<OrvixMode
 
 const CATALOG_STATE_KEY = "orvixCopilot.entryCatalogs.v1";
 
-class MemoryMetadataCache {
-  get<T>(_key: string): T | undefined {
-    return undefined;
-  }
-  async update(_key: string, _value: unknown): Promise<void> {}
-}
 
-async function waitForRetry(milliseconds: number, signal: AbortSignal | null | undefined): Promise<void> {
-  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(new DOMException("Aborted", "AbortError"));
-      },
-      { once: true },
-    );
-  });
-}

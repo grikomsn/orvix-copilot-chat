@@ -1,6 +1,7 @@
-export const MODELS_DEV_API_URL = "https://models.dev/api.json";
+import { MODELS_DEV_API_URL, MODELS_DEV_CACHE_TTL_MS, RemoteSnapshot, type SnapshotStore } from "../kit/remote-snapshot";
+
+export { MODELS_DEV_API_URL, MODELS_DEV_CACHE_TTL_MS };
 export const MODELS_DEV_CACHE_KEY = "orvixCopilot.modelsDevMetadata.v1";
-export const MODELS_DEV_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 export interface ModelsDevModelMetadata {
   readonly id: string;
@@ -19,10 +20,7 @@ export interface ModelsDevSnapshot {
   readonly fetchedAt: number;
   readonly models: Readonly<Record<string, ModelsDevModelMetadata>>;
 }
-export interface MetadataCache {
-  get<T>(key: string): T | undefined;
-  update(key: string, value: unknown): PromiseLike<void>;
-}
+export type MetadataCache = SnapshotStore;
 
 export function normalizeModelsDevSnapshot(payload: unknown, fetchedAt: number): ModelsDevSnapshot {
   const providers = record(payload);
@@ -64,56 +62,18 @@ export function parseCachedModelsDevSnapshot(value: unknown): ModelsDevSnapshot 
   }
 }
 
-export class ModelsDevMetadata {
-  private snapshot?: ModelsDevSnapshot;
-  private loaded = false;
-  private refreshPromise?: Promise<ModelsDevSnapshot>;
-  constructor(
-    private readonly cache: MetadataCache,
-    private readonly fetchImpl: typeof fetch = fetch,
-    private readonly now: () => number = () => Date.now(),
-  ) {}
-
-  async getOrRefresh(): Promise<ModelsDevSnapshot> {
-    this.load();
-    if (!this.snapshot) return this.refresh();
-    if (this.now() - this.snapshot.fetchedAt >= MODELS_DEV_CACHE_TTL_MS) void this.refresh();
-    return this.snapshot;
-  }
-
-  async refresh(): Promise<ModelsDevSnapshot> {
-    this.load();
-    if (this.refreshPromise) return this.refreshPromise;
-    this.refreshPromise = this.fetchAndCache().finally(() => {
-      this.refreshPromise = undefined;
+/** models.dev enrichment with the kit's persisted stale-while-revalidate lifecycle. */
+export class ModelsDevMetadata extends RemoteSnapshot<ModelsDevSnapshot> {
+  constructor(cache: MetadataCache, fetchImpl: typeof fetch = fetch, now: () => number = () => Date.now()) {
+    super({
+      cacheKey: MODELS_DEV_CACHE_KEY,
+      store: cache,
+      fetch: fetchImpl,
+      now,
+      normalize: normalizeModelsDevSnapshot,
+      parseCached: parseCachedModelsDevSnapshot,
+      empty: () => ({ fetchedAt: 0, models: {} }),
     });
-    return this.refreshPromise;
-  }
-
-  private async fetchAndCache(): Promise<ModelsDevSnapshot> {
-    try {
-      const response = await this.fetchImpl(MODELS_DEV_API_URL, {
-        headers: { accept: "application/json" },
-        signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(15_000) : undefined,
-      });
-      if (!response.ok) throw new Error(`Models.dev metadata request failed: ${response.status}`);
-      const next = normalizeModelsDevSnapshot(await response.json(), this.now());
-      this.snapshot = next;
-      try {
-        await this.cache.update(MODELS_DEV_CACHE_KEY, next);
-      } catch {
-        /* Cache writes are best effort. */
-      }
-      return next;
-    } catch {
-      return this.snapshot ?? { fetchedAt: 0, models: {} };
-    }
-  }
-
-  private load(): void {
-    if (this.loaded) return;
-    this.loaded = true;
-    this.snapshot = parseCachedModelsDevSnapshot(this.cache.get<unknown>(MODELS_DEV_CACHE_KEY));
   }
 }
 

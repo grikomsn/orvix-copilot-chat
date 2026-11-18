@@ -10,7 +10,7 @@
 
 import { ORVIX_ENDPOINTS } from "../transport/protocol";
 import { orvixHeaders } from "../transport/protocol";
-import { retryDelayMs } from "../provider/retry";
+import { retryDelayMs } from "../kit/retry";
 
 export type Fetcher = typeof fetch;
 

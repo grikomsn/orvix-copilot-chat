@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
 import { resolveMaxOutputTokens } from "../models/catalog";
 import type { ReasoningEffort } from "../models/options";
-import { trimHistoryToFit } from "./history-trim";
+import { trimChatHistoryToFit } from "../kit/history-trim";
 import { applyEffortIfSupported } from "./effort";
-import { convertMessages } from "./messages";
+import { convertChatMessages } from "../kit/messages";
 
 export function buildRequest(
   model: string,
@@ -17,10 +17,10 @@ export function buildRequest(
   contextCapTokens?: number,
 ): Record<string, unknown> {
   const maxTokens = resolveMaxOutputTokens(configuredMaxTokens, advertisedMaxTokens);
-  const convertedMessages = convertMessages(messages, imageInput);
+  const convertedMessages = convertChatMessages(messages, vscode, { label: "Orvix", imageInput });
   const requestMessages = contextCapTokens === undefined
     ? convertedMessages
-    : [...trimHistoryToFit(convertedMessages, contextCapTokens).items];
+    : [...trimChatHistoryToFit(convertedMessages, contextCapTokens).items];
   const tools = (options.tools ?? []).map((tool) => ({
     type: "function",
     function: {

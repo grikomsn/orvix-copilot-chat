@@ -1,3 +1,5 @@
+import { normalizeTokenUsage, providerUsagePayload, type ProviderUsagePayload } from "../kit/usage-payload";
+
 /** Orvix credits and request usage normalization for VS Code. */
 
 /** A project's live Orvix credit balance, in micro-USD (1 credit = 1e-6 USD). */
@@ -483,33 +485,7 @@ export function formatCompactTokens(value: number | undefined): string {
  * @see {@link ProviderUsagePayload}
  */
 export function toProviderUsagePayload(raw: Record<string, unknown>): ProviderUsagePayload {
-  const promptTokens = finiteNumber(raw.prompt_tokens ?? raw.input_tokens);
-  const completionTokens = finiteNumber(raw.completion_tokens ?? raw.output_tokens);
-  // Derive a total only when both sides are known; otherwise leave it absent.
-  const totalTokens =
-    finiteNumber(raw.total_tokens) ??
-    (promptTokens !== undefined && completionTokens !== undefined ? promptTokens + completionTokens : undefined);
-  const promptDetails = isRecord(raw.prompt_tokens_details) ? raw.prompt_tokens_details : undefined;
-  const completionDetails = isRecord(raw.completion_tokens_details) ? raw.completion_tokens_details : undefined;
-  const cachedTokens = finiteNumber(promptDetails?.cached_tokens);
-  const reasoningTokens = finiteNumber(completionDetails?.reasoning_tokens);
-  return {
-    ...(promptTokens === undefined ? {} : { prompt_tokens: promptTokens }),
-    ...(completionTokens === undefined ? {} : { completion_tokens: completionTokens }),
-    ...(totalTokens === undefined ? {} : { total_tokens: totalTokens }),
-    ...(cachedTokens === undefined ? {} : { prompt_tokens_details: { cached_tokens: cachedTokens } }),
-    ...(reasoningTokens === undefined
-      ? {}
-      : { completion_tokens_details: { reasoning_tokens: reasoningTokens } }),
-  };
-}
-
-export interface ProviderUsagePayload {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  total_tokens?: number;
-  prompt_tokens_details?: { cached_tokens: number };
-  completion_tokens_details?: { reasoning_tokens: number };
+  return providerUsagePayload(normalizeTokenUsage(raw)) ?? {};
 }
 
 /**

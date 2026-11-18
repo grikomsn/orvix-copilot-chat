@@ -1,14 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  applyReasoningEffort,
-  buildModelConfigurationSchema,
-  buildThinkingSchema,
-  contextSizeOptions,
-  resolveContextCap,
-  resolveContextSize,
-  resolveEffortValue,
-} from "./options";
+import { applyReasoningEffort, buildModelConfigurationSchema, buildThinkingSchema, resolveEffortValue } from "./options";
+import { contextSizeOptions, resolveContextCap, resolveContextSize } from "../kit/context-size";
 
 function model(id: string, reasoningEffort = true): { id: string; reasoningEffort: boolean } {
   return { id, reasoningEffort };

@@ -85,6 +85,20 @@ Key properties:
 - Never retry cancellation, a started stream, 402 funding errors, 403 funding restrictions, or 429 key limits.
 - Keep prompts, tool arguments, responses, and keys out of logs and fixtures.
 
+## Shared kit
+
+`src/kit/` is the [copilot-chat-kit](https://github.com/grikomsn/copilot-chat-kit)
+git submodule shared by every Copilot Chat provider extension. It compiles and
+tests with this repository (`npm test` runs its colocated tests too), so a fresh
+clone needs `git clone --recurse-submodules` or `git submodule update --init`.
+
+- Change shared behavior in the kit repository, push it, then run
+  `git submodule update --remote src/kit` here and commit the bump.
+- Keep provider quirks (auth, dialect extensions, cost tables, usage domains)
+  in this repository; configure kit modules through their options instead of
+  editing them in place.
+- Dependabot proposes kit bumps weekly; CI checks out submodules.
+
 ## Release flow
 
 User-visible changes require a Changeset. The release workflow creates a version PR, runs the complete package check, publishes the VSIX to the Visual Studio Marketplace, and creates a matching GitHub release.

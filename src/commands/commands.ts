@@ -3,7 +3,7 @@
 import * as vscode from "vscode";
 import { CONFIG_SECTION, DEFAULT_INLINE_MODEL, INLINE_SUGGESTIONS_MODEL_SETTING } from "../autocomplete/config";
 import { inlineModelChoices } from "../autocomplete/models";
-import { messageOf } from "../errors";
+import { messageOf } from "../kit/errors";
 import {
   DEFAULT_IMAGE_MODEL,
   IMAGE_MODEL_CREDIT_COSTS,

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { costCategory, orvixModelCost, modelCostFromApi, modelPricingFields } from "./pricing";
+import { orvixModelCost, modelCostFromApi } from "./pricing";
+import { costCategory, modelPricingFields } from "../kit/pricing";
 
 test("converts Orvix per-token API rates to per-million costs", () => {
   assert.deepEqual(modelCostFromApi({
@@ -13,7 +14,7 @@ test("converts Orvix per-token API rates to per-million costs", () => {
 
 test("converts USD per-million rates to VS Code pricing fields", () => {
   assert.deepEqual(modelPricingFields({ input: 0.18, cacheRead: 0.04, output: 0.35 }), {
-    pricing: "In: $0.18 · Out: $0.35 /1M tokens",
+    pricing: "In: $0.18 · Cached: $0.04 · Out: $0.35 /1M tokens",
     inputCost: 18,
     outputCost: 35,
     cacheCost: 4,
